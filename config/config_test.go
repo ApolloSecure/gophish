@@ -29,6 +29,25 @@ var validConfig = []byte(`{
 	"contact_address": ""
 }`)
 
+var postgresConfig = []byte(`{
+	"admin_server": {
+		"listen_url": "127.0.0.1:3333",
+		"use_tls": true,
+		"cert_path": "gophish_admin.crt",
+		"key_path": "gophish_admin.key"
+	},
+	"phish_server": {
+		"listen_url": "0.0.0.0:8080",
+		"use_tls": false,
+		"cert_path": "example.crt",
+		"key_path": "example.key"
+	},
+	"db_name": "Postgres",
+	"db_path": "host=127.0.0.1 port=5432 user=postgres password=postgres dbname=gophish sslmode=disable",
+	"migrations_prefix": "db/db_",
+	"contact_address": ""
+}`)
+
 func createTemporaryConfig(t *testing.T) *os.File {
 	f, err := ioutil.TempFile("", "gophish-config")
 	if err != nil {
@@ -74,5 +93,26 @@ func TestLoadConfig(t *testing.T) {
 	_, err = LoadConfig("bogusfile")
 	if err == nil {
 		t.Fatalf("expected error when loading invalid config, but got %v", err)
+	}
+}
+
+func TestLoadConfigNormalizesPostgresName(t *testing.T) {
+	f := createTemporaryConfig(t)
+	defer removeTemporaryConfig(t, f)
+	_, err := f.Write(postgresConfig)
+	if err != nil {
+		t.Fatalf("error writing config to temporary file: %v", err)
+	}
+
+	conf, err := LoadConfig(f.Name())
+	if err != nil {
+		t.Fatalf("error loading postgres config from temporary file: %v", err)
+	}
+
+	if conf.DBName != "postgres" {
+		t.Fatalf("expected postgres db_name, got %q", conf.DBName)
+	}
+	if conf.MigrationsPath != "db/db_postgres" {
+		t.Fatalf("expected postgres migrations path, got %q", conf.MigrationsPath)
 	}
 }

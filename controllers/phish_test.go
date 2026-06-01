@@ -7,12 +7,32 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"reflect"
 	"testing"
 
 	"github.com/gophish/gophish/config"
 	"github.com/gophish/gophish/models"
 )
+
+func resultByRID(t *testing.T, campaign models.Campaign, rid string) models.Result {
+	for _, result := range campaign.Results {
+		if result.RId == rid {
+			return result
+		}
+	}
+	t.Fatalf("result %q not found in campaign %d", rid, campaign.Id)
+	return models.Result{}
+}
+
+func latestEventForEmailAndMessage(t *testing.T, campaign models.Campaign, email string, message string) models.Event {
+	for i := len(campaign.Events) - 1; i >= 0; i-- {
+		event := campaign.Events[i]
+		if event.Email == email && event.Message == message {
+			return event
+		}
+	}
+	t.Fatalf("event %q for %q not found in campaign %d", message, email, campaign.Id)
+	return models.Event{}
+}
 
 func getFirstCampaign(t *testing.T) models.Campaign {
 	campaigns, err := models.GetCampaigns(1)
@@ -147,7 +167,7 @@ func transparencyRequest(t *testing.T, ctx *testContext, r models.Result, rid, p
 		SendDate:       r.SendDate,
 		Server:         config.ServerName,
 	}
-	if !reflect.DeepEqual(tr, expectedResponse) {
+	if tr.Server != expectedResponse.Server || tr.ContactAddress != expectedResponse.ContactAddress || !tr.SendDate.Equal(expectedResponse.SendDate) {
 		t.Fatalf("unexpected transparency response received. expected %v got %v", expectedResponse, tr)
 	}
 }
@@ -164,15 +184,15 @@ func TestOpenedPhishingEmail(t *testing.T) {
 	openEmail(t, ctx, result.RId)
 
 	campaign = getFirstCampaign(t)
-	result = campaign.Results[0]
-	lastEvent := campaign.Events[len(campaign.Events)-1]
+	result = resultByRID(t, campaign, result.RId)
+	lastEvent := latestEventForEmailAndMessage(t, campaign, result.Email, models.EventOpened)
 	if result.Status != models.EventOpened {
 		t.Fatalf("unexpected result status received. expected %s got %s", models.EventOpened, result.Status)
 	}
 	if lastEvent.Message != models.EventOpened {
 		t.Fatalf("unexpected event status received. expected %s got %s", lastEvent.Message, models.EventOpened)
 	}
-	if result.ModifiedDate != lastEvent.Time {
+	if !result.ModifiedDate.Equal(lastEvent.Time) {
 		t.Fatalf("unexpected result modified date received. expected %s got %s", lastEvent.Time, result.ModifiedDate)
 	}
 }
@@ -189,8 +209,8 @@ func TestReportedPhishingEmail(t *testing.T) {
 	reportedEmail(t, ctx, result.RId)
 
 	campaign = getFirstCampaign(t)
-	result = campaign.Results[0]
-	lastEvent := campaign.Events[len(campaign.Events)-1]
+	result = resultByRID(t, campaign, result.RId)
+	lastEvent := latestEventForEmailAndMessage(t, campaign, result.Email, models.EventReported)
 
 	if result.Reported != true {
 		t.Fatalf("unexpected result report status received. expected %v got %v", true, result.Reported)
@@ -198,7 +218,7 @@ func TestReportedPhishingEmail(t *testing.T) {
 	if lastEvent.Message != models.EventReported {
 		t.Fatalf("unexpected event status received. expected %s got %s", lastEvent.Message, models.EventReported)
 	}
-	if result.ModifiedDate != lastEvent.Time {
+	if !result.ModifiedDate.Equal(lastEvent.Time) {
 		t.Fatalf("unexpected result modified date received. expected %s got %s", lastEvent.Time, result.ModifiedDate)
 	}
 }
@@ -216,15 +236,15 @@ func TestClickedPhishingLinkAfterOpen(t *testing.T) {
 	clickLink(t, ctx, result.RId, campaign.Page.HTML)
 
 	campaign = getFirstCampaign(t)
-	result = campaign.Results[0]
-	lastEvent := campaign.Events[len(campaign.Events)-1]
+	result = resultByRID(t, campaign, result.RId)
+	lastEvent := latestEventForEmailAndMessage(t, campaign, result.Email, models.EventClicked)
 	if result.Status != models.EventClicked {
 		t.Fatalf("unexpected result status received. expected %s got %s", models.EventClicked, result.Status)
 	}
 	if lastEvent.Message != models.EventClicked {
 		t.Fatalf("unexpected event status received. expected %s got %s", lastEvent.Message, models.EventClicked)
 	}
-	if result.ModifiedDate != lastEvent.Time {
+	if !result.ModifiedDate.Equal(lastEvent.Time) {
 		t.Fatalf("unexpected result modified date received. expected %s got %s", lastEvent.Time, result.ModifiedDate)
 	}
 }
@@ -273,7 +293,7 @@ func TestCompletedCampaignClick(t *testing.T) {
 	openEmail(t, ctx, result.RId)
 
 	campaign = getFirstCampaign(t)
-	result = campaign.Results[0]
+	result = resultByRID(t, campaign, result.RId)
 	if result.Status != models.EventOpened {
 		t.Fatalf("unexpected result status received. expected %s got %s", models.EventOpened, result.Status)
 	}
@@ -283,7 +303,7 @@ func TestCompletedCampaignClick(t *testing.T) {
 	clickLink404(t, ctx, result.RId)
 
 	campaign = getFirstCampaign(t)
-	result = campaign.Results[0]
+	result = resultByRID(t, campaign, result.RId)
 	if result.Status != models.EventOpened {
 		t.Fatalf("unexpected result status received. expected %s got %s", models.EventOpened, result.Status)
 	}

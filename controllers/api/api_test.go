@@ -10,6 +10,7 @@ import (
 
 	"github.com/gophish/gophish/config"
 	"github.com/gophish/gophish/models"
+	"github.com/gophish/gophish/testutil"
 )
 
 type testContext struct {
@@ -20,12 +21,19 @@ type testContext struct {
 }
 
 func setupTest(t *testing.T) *testContext {
-	conf := &config.Config{
-		DBName:         "sqlite3",
-		DBPath:         ":memory:",
-		MigrationsPath: "../../db/db_sqlite3/migrations/",
+	conf, cleanup, err := testutil.NewTestConfig("controllers_api")
+	if err != nil {
+		t.Fatalf("error creating test config: %v", err)
 	}
-	err := models.Setup(conf)
+	t.Cleanup(func() {
+		if err := models.Close(); err != nil {
+			t.Fatalf("error closing database: %v", err)
+		}
+		if err := cleanup(); err != nil {
+			t.Fatalf("error cleaning up database: %v", err)
+		}
+	})
+	err = models.Setup(conf)
 	if err != nil {
 		t.Fatalf("Failed creating database: %v", err)
 	}
@@ -88,7 +96,7 @@ func createTestData(t *testing.T) {
 func TestSiteImportBaseHref(t *testing.T) {
 	ctx := setupTest(t)
 	h := "<html><head></head><body><img src=\"/test.png\"/></body></html>"
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := testutil.NewLocalServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, h)
 	}))
 	expected := fmt.Sprintf("<html><head><base href=\"%s\"/></head><body><img src=\"/test.png\"/>\n</body></html>", ts.URL)

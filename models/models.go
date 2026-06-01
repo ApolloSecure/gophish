@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"bitbucket.org/liamstask/goose/lib/goose"
@@ -18,10 +21,22 @@ import (
 
 	log "github.com/gophish/gophish/logger"
 	"github.com/jinzhu/gorm"
+	_ "github.com/lib/pq"           // Blank import needed to import postgres
 	_ "github.com/mattn/go-sqlite3" // Blank import needed to import sqlite3
 )
 
 var db *gorm.DB
+
+// Close releases the active database connection when one has been opened.
+func Close() error {
+	if db == nil {
+		return nil
+	}
+	err := db.Close()
+	db = nil
+	return err
+}
+
 var conf *config.Config
 
 const MaxDatabaseConnectionAttempts int = 10
@@ -88,6 +103,9 @@ func chooseDBDriver(name, openStr string) goose.DBDriver {
 	case "mysql":
 		d.Import = "github.com/go-sql-driver/mysql"
 		d.Dialect = &goose.MySqlDialect{}
+	case "postgres":
+		d.Import = "github.com/lib/pq"
+		d.Dialect = &goose.PostgresDialect{}
 
 	// Default database is sqlite3
 	default:
@@ -96,6 +114,48 @@ func chooseDBDriver(name, openStr string) goose.DBDriver {
 	}
 
 	return d
+}
+
+func postgresOptionConfigured(openStr, option string) bool {
+	pattern := fmt.Sprintf(`(^|\s)%s=`, regexp.QuoteMeta(option))
+	return regexp.MustCompile(pattern).MatchString(openStr)
+}
+
+func quotePostgresValue(value string) string {
+	if !strings.ContainsAny(value, " \t\n\r'\\") {
+		return value
+	}
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `'`, `\'`)
+	return "'" + value + "'"
+}
+
+func applyPostgresSSLCA(openStr, caPath string) string {
+	if caPath == "" {
+		return openStr
+	}
+	if strings.HasPrefix(openStr, "postgres://") || strings.HasPrefix(openStr, "postgresql://") {
+		u, err := url.Parse(openStr)
+		if err != nil {
+			return openStr
+		}
+		query := u.Query()
+		if query.Get("sslrootcert") == "" {
+			query.Set("sslrootcert", caPath)
+		}
+		if query.Get("sslmode") == "" {
+			query.Set("sslmode", "verify-ca")
+		}
+		u.RawQuery = query.Encode()
+		return u.String()
+	}
+	if !postgresOptionConfigured(openStr, "sslrootcert") {
+		openStr = strings.TrimSpace(openStr + " sslrootcert=" + quotePostgresValue(caPath))
+	}
+	if !postgresOptionConfigured(openStr, "sslmode") {
+		openStr = strings.TrimSpace(openStr + " sslmode=verify-ca")
+	}
+	return openStr
 }
 
 func createTemporaryPassword(u *User) error {
@@ -133,6 +193,10 @@ func createTemporaryPassword(u *User) error {
 func Setup(c *config.Config) error {
 	// Setup the package-scoped config
 	conf = c
+	conf.DBName = strings.ToLower(conf.DBName)
+	if conf.DBName == "postgres" {
+		conf.DBPath = applyPostgresSSLCA(conf.DBPath, conf.DBSSLCaPath)
+	}
 	// Setup the goose configuration
 	migrateConf := &goose.DBConf{
 		MigrationsDir: conf.MigrationsPath,

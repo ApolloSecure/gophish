@@ -11,6 +11,7 @@ import (
 
 	"github.com/gophish/gophish/dialer"
 	"github.com/gophish/gophish/models"
+	"github.com/gophish/gophish/testutil"
 )
 
 func makeImportRequest(ctx *testContext, allowedHosts []string, url string) *httptest.ResponseRecorder {
@@ -50,7 +51,7 @@ func TestDefaultDeniedImport(t *testing.T) {
 func TestDefaultAllowedImport(t *testing.T) {
 	ctx := setupTest(t)
 	h := "<html><head></head><body><img src=\"/test.png\"/></body></html>"
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := testutil.NewLocalServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, h)
 	}))
 	defer ts.Close()
@@ -64,7 +65,7 @@ func TestDefaultAllowedImport(t *testing.T) {
 func TestCustomDeniedImport(t *testing.T) {
 	ctx := setupTest(t)
 	h := "<html><head></head><body><img src=\"/test.png\"/></body></html>"
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := testutil.NewLocalServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, h)
 	}))
 	defer ts.Close()

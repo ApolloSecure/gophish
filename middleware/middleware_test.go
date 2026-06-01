@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gophish/gophish/config"
 	ctx "github.com/gophish/gophish/context"
 	"github.com/gophish/gophish/models"
+	"github.com/gophish/gophish/testutil"
 )
 
 var successHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -20,12 +20,19 @@ type testContext struct {
 }
 
 func setupTest(t *testing.T) *testContext {
-	conf := &config.Config{
-		DBName:         "sqlite3",
-		DBPath:         ":memory:",
-		MigrationsPath: "../db/db_sqlite3/migrations/",
+	conf, cleanup, err := testutil.NewTestConfig("middleware")
+	if err != nil {
+		t.Fatalf("error creating test config: %v", err)
 	}
-	err := models.Setup(conf)
+	t.Cleanup(func() {
+		if err := models.Close(); err != nil {
+			t.Fatalf("error closing database: %v", err)
+		}
+		if err := cleanup(); err != nil {
+			t.Fatalf("error cleaning up database: %v", err)
+		}
+	})
+	err = models.Setup(conf)
 	if err != nil {
 		t.Fatalf("Failed creating database: %v", err)
 	}

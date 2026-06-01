@@ -1,0 +1,19 @@
+services:
+  gophish:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gophish-mysql-clone
+    environment:
+      ADMIN_LISTEN_URL: 0.0.0.0:3333
+      ADMIN_USE_TLS: "false"
+      ADMIN_TRUSTED_ORIGINS: http://localhost:3333,http://127.0.0.1:3333
+      PHISH_LISTEN_URL: 0.0.0.0:8080
+      PHISH_USE_TLS: "false"
+      DB_NAME: mysql
+      DB_PATH: root:root@tcp(host.docker.internal:3307)/gophish?charset=utf8mb4&parseTime=True&loc=UTC
+      GOPHISH_INITIAL_ADMIN_PASSWORD: changeme-now
+    ports:
+      - "3333:3333"
+      - "8081:8080"
+    restart: unless-stopped

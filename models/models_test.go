@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gophish/gophish/config"
+	"github.com/gophish/gophish/testutil"
 	"gopkg.in/check.v1"
 )
 
@@ -11,21 +12,34 @@ import (
 func Test(t *testing.T) { check.TestingT(t) }
 
 type ModelsSuite struct {
-	config *config.Config
+	config  *config.Config
+	cleanup func() error
 }
 
 var _ = check.Suite(&ModelsSuite{})
+var benchmarkCleanup func() error
 
 func (s *ModelsSuite) SetUpSuite(c *check.C) {
-	conf := &config.Config{
-		DBName:         "sqlite3",
-		DBPath:         ":memory:",
-		MigrationsPath: "../db/db_sqlite3/migrations/",
+	conf, cleanup, err := testutil.NewTestConfig("models")
+	if err != nil {
+		c.Fatalf("Failed creating test config: %v", err)
 	}
 	s.config = conf
-	err := Setup(conf)
+	s.cleanup = cleanup
+	err = Setup(conf)
 	if err != nil {
 		c.Fatalf("Failed creating database: %v", err)
+	}
+}
+
+func (s *ModelsSuite) TearDownSuite(c *check.C) {
+	if err := Close(); err != nil {
+		c.Fatalf("error closing database: %v", err)
+	}
+	if s.cleanup != nil {
+		if err := s.cleanup(); err != nil {
+			c.Fatalf("error cleaning up database: %v", err)
+		}
 	}
 }
 
@@ -105,21 +119,27 @@ func (s *ModelsSuite) createCampaign(ch *check.C) Campaign {
 }
 
 func setupBenchmark(b *testing.B) {
-	conf := &config.Config{
-		DBName:         "sqlite3",
-		DBPath:         ":memory:",
-		MigrationsPath: "../db/db_sqlite3/migrations/",
+	conf, cleanup, err := testutil.NewTestConfig("benchmark")
+	if err != nil {
+		b.Fatalf("Failed creating test config: %v", err)
 	}
-	err := Setup(conf)
+	benchmarkCleanup = cleanup
+	err = Setup(conf)
 	if err != nil {
 		b.Fatalf("Failed creating database: %v", err)
 	}
 }
 
 func tearDownBenchmark(b *testing.B) {
-	err := db.Close()
+	err := Close()
 	if err != nil {
 		b.Fatalf("error closing database: %v", err)
+	}
+	if benchmarkCleanup != nil {
+		if err := benchmarkCleanup(); err != nil {
+			b.Fatalf("error cleaning up database: %v", err)
+		}
+		benchmarkCleanup = nil
 	}
 }
 

@@ -1,0 +1,5 @@
+production:
+    driver: postgres
+    open: host=127.0.0.1 port=5432 user=postgres dbname=gophish sslmode=disable
+    dialect: postgres
+    import: github.com/lib/pq

@@ -6,9 +6,10 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"github.com/gophish/gophish/testutil"
 )
 
 type mockSender struct {
@@ -50,7 +51,7 @@ func TestSendReal(t *testing.T) {
 		"key3": "val3",
 	}
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := testutil.NewLocalServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("[test] running the server...")
 
 		signStartIdx := len(Sha256Prefix) + 1

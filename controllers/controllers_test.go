@@ -1,15 +1,14 @@
 package controllers
 
 import (
-	"fmt"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/gophish/gophish/auth"
 	"github.com/gophish/gophish/config"
 	"github.com/gophish/gophish/models"
+	"github.com/gophish/gophish/testutil"
 )
 
 // testContext is the data required to test API related functions
@@ -22,24 +21,25 @@ type testContext struct {
 }
 
 func setupTest(t *testing.T) *testContext {
-	wd, _ := os.Getwd()
-	fmt.Println(wd)
-	conf := &config.Config{
-		DBName:         "sqlite3",
-		DBPath:         ":memory:",
-		MigrationsPath: "../db/db_sqlite3/migrations/",
+	conf, cleanup, err := testutil.NewTestConfig("controllers")
+	if err != nil {
+		t.Fatalf("error creating test config: %v", err)
 	}
-	abs, _ := filepath.Abs("../db/db_sqlite3/migrations/")
-	fmt.Printf("in controllers_test.go: %s\n", abs)
-	err := models.Setup(conf)
+	t.Cleanup(func() {
+		if err := models.Close(); err != nil {
+			t.Fatalf("error closing database: %v", err)
+		}
+		if err := cleanup(); err != nil {
+			t.Fatalf("error cleaning up database: %v", err)
+		}
+	})
+	err = models.Setup(conf)
 	if err != nil {
 		t.Fatalf("error setting up database: %v", err)
 	}
 	ctx := &testContext{}
 	ctx.config = conf
-	ctx.adminServer = httptest.NewUnstartedServer(NewAdminServer(ctx.config.AdminConf).server.Handler)
-	ctx.adminServer.Config.Addr = ctx.config.AdminConf.ListenURL
-	ctx.adminServer.Start()
+	ctx.adminServer = testutil.NewLocalServer(t, NewAdminServer(ctx.config.AdminConf).server.Handler)
 	// Get the API key to use for these tests
 	u, err := models.GetUser(1)
 	// Reset the temporary password for the admin user to a value we control
@@ -59,9 +59,7 @@ func setupTest(t *testing.T) *testContext {
 
 	ctx.apiKey = u.ApiKey
 	// Start the phishing server
-	ctx.phishServer = httptest.NewUnstartedServer(NewPhishingServer(ctx.config.PhishConf).server.Handler)
-	ctx.phishServer.Config.Addr = ctx.config.PhishConf.ListenURL
-	ctx.phishServer.Start()
+	ctx.phishServer = testutil.NewLocalServer(t, NewPhishingServer(ctx.config.PhishConf).server.Handler)
 	// Move our cwd up to the project root for help with resolving
 	// static assets
 	origPath, _ := os.Getwd()

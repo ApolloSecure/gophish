@@ -3,7 +3,6 @@ on:
   - pull_request
   - push
 jobs:
-
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -32,5 +31,43 @@ jobs:
     - name: Format
       run: diff -u <(echo -n) <(gofmt -d .)
     
-    - name: Test
+    - name: Test (SQLite)
       run: go test ./...
+
+  postgres:
+    name: Postgres Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Set up Go 1.23
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.23"
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v4
+
+    - name: Get dependencies
+      run: |
+        go get -v -t -d ./...
+        go get gopkg.in/check.v1
+
+    - name: Test (Postgres)
+      env:
+        GOPHISH_TEST_DB: postgres
+        GOPHISH_TEST_POSTGRES_ADMIN_DSN: host=127.0.0.1 port=5432 user=postgres password=postgres dbname=postgres sslmode=disable
+      run: go test -p 1 ./...

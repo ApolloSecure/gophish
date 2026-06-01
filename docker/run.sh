@@ -74,10 +74,31 @@ if [ -n "${DB_NAME+set}" ] ; then
         cat config.json.tmp > config.json
 fi
 
+if [ -n "${DB_PATH+set}" ] ; then
+    jq -r \
+        --arg DB_PATH "${DB_PATH}" \
+        '.db_path = $DB_PATH' config.json > config.json.tmp && \
+        cat config.json.tmp > config.json
+fi
+
 if [ -n "${DB_FILE_PATH+set}" ] ; then
     jq -r \
         --arg DB_FILE_PATH "${DB_FILE_PATH}" \
         '.db_path = $DB_FILE_PATH' config.json > config.json.tmp && \
+        cat config.json.tmp > config.json
+fi
+
+if [ -n "${DB_SSLCA_PATH+set}" ] ; then
+    jq -r \
+        --arg DB_SSLCA_PATH "${DB_SSLCA_PATH}" \
+        '.db_sslca_path = $DB_SSLCA_PATH' config.json > config.json.tmp && \
+        cat config.json.tmp > config.json
+fi
+
+if [ -n "${MIGRATIONS_PREFIX+set}" ] ; then
+    jq -r \
+        --arg MIGRATIONS_PREFIX "${MIGRATIONS_PREFIX}" \
+        '.migrations_prefix = $MIGRATIONS_PREFIX' config.json > config.json.tmp && \
         cat config.json.tmp > config.json
 fi
 

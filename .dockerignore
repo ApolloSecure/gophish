@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+dist
+tmp
+.DS_Store
+coverage
+reports
+*.log
+gophish
+gophish.db
+docker-compose*.yml

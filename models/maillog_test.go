@@ -16,6 +16,10 @@ import (
 	"gopkg.in/check.v1"
 )
 
+func assertTimeEqual(ch *check.C, got time.Time, expected time.Time) {
+	ch.Assert(got.Equal(expected), check.Equals, true)
+}
+
 func (s *ModelsSuite) emailFromFirstMailLog(campaign Campaign, ch *check.C) *email.Email {
 	result := campaign.Results[0]
 	m := &MailLog{}
@@ -54,7 +58,7 @@ func (s *ModelsSuite) TestGetQueuedMailLogs(ch *check.C) {
 		if m, ok := got[r.RId]; ok {
 			ch.Assert(m.RId, check.Equals, r.RId)
 			ch.Assert(m.CampaignId, check.Equals, campaign.Id)
-			ch.Assert(m.SendDate, check.Equals, campaign.LaunchDate)
+			assertTimeEqual(ch, m.SendDate, campaign.LaunchDate)
 			ch.Assert(m.UserId, check.Equals, campaign.UserId)
 			ch.Assert(m.SendAttempt, check.Equals, 0)
 		} else {
@@ -71,7 +75,7 @@ func (s *ModelsSuite) TestMailLogBackoff(ch *check.C) {
 		Find(m).Error
 	ch.Assert(err, check.Equals, nil)
 	ch.Assert(m.SendAttempt, check.Equals, 0)
-	ch.Assert(m.SendDate, check.Equals, campaign.LaunchDate)
+	assertTimeEqual(ch, m.SendDate, campaign.LaunchDate)
 
 	expectedError := &textproto.Error{
 		Code: 500,
@@ -86,11 +90,11 @@ func (s *ModelsSuite) TestMailLogBackoff(ch *check.C) {
 		expectedSendDate := m.SendDate.Add(time.Minute * time.Duration(expectedDuration))
 		err = m.Backoff(expectedError)
 		ch.Assert(err, check.Equals, nil)
-		ch.Assert(m.SendDate, check.Equals, expectedSendDate)
+		assertTimeEqual(ch, m.SendDate, expectedSendDate)
 		ch.Assert(m.Processing, check.Equals, false)
 		result, err := GetResult(m.RId)
 		ch.Assert(err, check.Equals, nil)
-		ch.Assert(result.SendDate, check.Equals, expectedSendDate)
+		assertTimeEqual(ch, result.SendDate, expectedSendDate)
 		ch.Assert(result.Status, check.Equals, StatusRetry)
 	}
 	// Get our updated campaign and check for the added event
@@ -184,7 +188,7 @@ func (s *ModelsSuite) TestMailLogSuccess(ch *check.C) {
 		Time:       gotEvent.Time,
 	}
 	ch.Assert(gotEvent, check.DeepEquals, expectedEvent)
-	ch.Assert(result.SendDate, check.Equals, gotEvent.Time)
+	assertTimeEqual(ch, result.SendDate, gotEvent.Time)
 
 	ms, err := GetMailLogsByCampaign(campaign.Id)
 	ch.Assert(err, check.Equals, nil)
@@ -207,7 +211,7 @@ func (s *ModelsSuite) TestGenerateMailLog(ch *check.C) {
 	ch.Assert(err, check.Equals, nil)
 	ch.Assert(m.RId, check.Equals, result.RId)
 	ch.Assert(m.CampaignId, check.Equals, campaign.Id)
-	ch.Assert(m.SendDate, check.Equals, campaign.LaunchDate)
+	assertTimeEqual(ch, m.SendDate, campaign.LaunchDate)
 	ch.Assert(m.UserId, check.Equals, campaign.UserId)
 	ch.Assert(m.SendAttempt, check.Equals, 0)
 	ch.Assert(m.Processing, check.Equals, false)

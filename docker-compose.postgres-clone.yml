@@ -1,0 +1,18 @@
+services:
+  gophish:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gophish-postgres-clone
+    environment:
+      ADMIN_LISTEN_URL: 0.0.0.0:3333
+      ADMIN_USE_TLS: "false"
+      ADMIN_TRUSTED_ORIGINS: http://localhost:3334,http://127.0.0.1:3334
+      PHISH_LISTEN_URL: 0.0.0.0:8080
+      PHISH_USE_TLS: "false"
+      DB_NAME: postgres
+      DB_PATH: host=host.docker.internal port=5432 user=postgres password=postgres dbname=gophish_postgres_clone sslmode=disable
+    ports:
+      - "3334:3333"
+      - "8082:8080"
+    restart: unless-stopped
