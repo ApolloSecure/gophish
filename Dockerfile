@@ -1,24 +1,27 @@
 # Minify client side assets (JavaScript)
-FROM node:latest AS build-js
+FROM node:22-bookworm AS build-js
 
 RUN npm install gulp gulp-cli -g
 
 WORKDIR /build
-COPY . .
+COPY package.json yarn.lock gulpfile.js ./
 RUN npm install --include=dev
+COPY . .
 RUN gulp
 
 
 # Build Golang binary
-FROM golang:1.15.2 AS build-golang
+FROM golang:1.26-bookworm AS build-golang
 
 WORKDIR /go/src/github.com/gophish/gophish
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN go get -v && go build -v
+RUN go build -v .
 
 
 # Runtime container
-FROM debian:stable-slim
+FROM debian:bookworm-slim
 
 RUN useradd -m -d /opt/gophish -s /bin/bash app
 
