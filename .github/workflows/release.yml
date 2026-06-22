@@ -36,6 +36,19 @@ jobs:
                       arch: '386'
         steps:
             - uses: actions/checkout@v6
+            - name: Validate release tag
+              shell: bash
+              run: |
+                set -euo pipefail
+                BASE_VERSION="$(tr -d '\r\n' < VERSION)"
+                RELEASE_TAG="${{ github.event.release.tag_name }}"
+                EXPECTED_REGEX="^${BASE_VERSION}-apollo\.[0-9]+$"
+
+                if [[ ! "$RELEASE_TAG" =~ $EXPECTED_REGEX ]]; then
+                  echo "Invalid release tag: $RELEASE_TAG"
+                  echo "Expected format: ${BASE_VERSION}-apollo.N"
+                  exit 1
+                fi
             - name: Set up Go
               uses: actions/setup-go@v6
               with:
