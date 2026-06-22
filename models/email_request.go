@@ -158,7 +158,7 @@ func (s *EmailRequest) Generate(msg *gomail.Message) error {
 		msg.SetBody("text/plain", text)
 	}
 	if s.Template.HTML != "" {
-		html, err := ExecuteTemplate(s.Template.HTML, ptx)
+		html, err := ExecuteHTMLTemplate(s.Template.HTML, ptx)
 		if err != nil {
 			log.Error(err)
 		}

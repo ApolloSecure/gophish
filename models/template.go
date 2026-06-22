@@ -41,7 +41,7 @@ func (t *Template) Validate() error {
 			return err
 		}
 	}
-	if err := ValidateTemplate(t.HTML); err != nil {
+	if err := ValidateHTMLTemplate(t.HTML); err != nil {
 		return err
 	}
 	if err := ValidateTemplate(t.Text); err != nil {

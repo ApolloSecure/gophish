@@ -203,7 +203,8 @@ function completeCampaign() {
 function exportAsCSV(scope) {
     exportHTML = $("#exportButton").html()
     var csvScope = null
-    var filename = campaign.name + ' - ' + capitalize(scope) + '.csv'
+    var safeCampaignName = (campaign.name || 'campaign').replace(/[^a-zA-Z0-9._ -]/g, '_')
+    var filename = safeCampaignName + ' - ' + capitalize(scope) + '.csv'
     switch (scope) {
         case "results":
             csvScope = campaign.results
@@ -229,9 +230,8 @@ function exportAsCSV(scope) {
         var dlLink = document.createElement('a');
         dlLink.href = csvURL;
         dlLink.setAttribute('download', filename)
-        document.body.appendChild(dlLink)
         dlLink.click();
-        document.body.removeChild(dlLink)
+        window.URL.revokeObjectURL(csvURL);
     }
     $("#exportButton").html(exportHTML)
 }
@@ -284,6 +284,16 @@ function replay(event_idx) {
     submitForm()
 
     function submitForm() {
+        try {
+            var parsedURL = new URL(url, window.location.origin)
+            if (parsedURL.protocol !== 'http:' && parsedURL.protocol !== 'https:') {
+                throw new Error('unsupported protocol')
+            }
+            url = parsedURL.toString()
+        } catch (e) {
+            Swal.fire('Invalid URL', 'Only http:// and https:// URLs are allowed.', 'error')
+            return
+        }
         form.attr({
             action: url
         })

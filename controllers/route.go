@@ -21,11 +21,11 @@ import (
 	"github.com/gophish/gophish/models"
 	"github.com/gophish/gophish/util"
 	"github.com/gophish/gophish/worker"
-	"github.com/gorilla/csrf"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/jordan-wright/unindexed"
+	csrf "filippo.io/csrf/gorilla"
 )
 
 // AdminServerOption is a functional option that is used to configure the
@@ -157,7 +157,15 @@ func (as *AdminServer) registerRoutes() {
 		csrf.Secure(as.config.UseTLS),
 		csrf.TrustedOrigins(as.config.TrustedOrigins))
 	adminHandler := csrfHandler(router)
-	adminHandler = mid.Use(adminHandler.ServeHTTP, mid.CSRFExceptions, mid.GetContext, mid.ApplySecurityHeaders)
+	middlewareChain := []func(http.Handler) http.HandlerFunc{
+		mid.CSRFExceptions,
+		mid.GetContext,
+		mid.ApplySecurityHeaders,
+	}
+	if !as.config.UseTLS {
+		middlewareChain = append([]func(http.Handler) http.HandlerFunc{mid.MarkPlaintextHTTP}, middlewareChain...)
+	}
+	adminHandler = mid.Use(adminHandler.ServeHTTP, middlewareChain...)
 
 	// Setup GZIP compression
 	gzipWrapper, _ := gziphandler.NewGzipLevelHandler(gzip.BestCompression)

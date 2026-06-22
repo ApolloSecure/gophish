@@ -34,6 +34,9 @@ Releases of Gophish prior to v0.10.1 have a default username of `admin` and pass
 
 Documentation can be found on our [site](http://getgophish.com/documentation). Find something missing? Let us know by filing an issue!
 
+For this fork's PostgreSQL and RDS migration work, see the
+[PostgreSQL RDS migration runbook](doc/postgres_rds_migration.md).
+
 ### Issues
 
 Find a bug? Want more features? Find something missing in the documentation? Let us know! Please don't hesitate to [file an issue](https://github.com/gophish/gophish/issues/new) and we'll get right on it.

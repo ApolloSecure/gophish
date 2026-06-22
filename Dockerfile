@@ -11,7 +11,7 @@ RUN gulp
 
 
 # Build Golang binary
-FROM golang:1.26-bookworm AS build-golang
+FROM golang:1.26.4-bookworm AS build-golang
 
 WORKDIR /go/src/github.com/gophish/gophish
 COPY go.mod go.sum ./
@@ -21,7 +21,7 @@ RUN go build -v .
 
 
 # Runtime container
-FROM debian:bookworm-slim
+FROM debian:13.5-slim
 
 RUN useradd -m -d /opt/gophish -s /bin/bash app
 

@@ -319,7 +319,16 @@ func insertTargetIntoGroup(tx *gorm.DB, t Target, gid int64) error {
 		}).Error("Invalid email")
 		return err
 	}
-	err := tx.Where(t).FirstOrCreate(&t).Error
+	existing := Target{}
+	err := tx.Where("email = ?", t.Email).First(&existing).Error
+	if err == gorm.ErrRecordNotFound {
+		err = tx.Create(&t).Error
+		if err == nil {
+			existing = t
+		}
+	} else if err == nil {
+		t = existing
+	}
 	if err != nil {
 		log.WithFields(logrus.Fields{
 			"email": t.Email,

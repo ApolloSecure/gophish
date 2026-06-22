@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
+	csrf "filippo.io/csrf/gorilla"
 	ctx "github.com/gophish/gophish/context"
 	"github.com/gophish/gophish/models"
-	"github.com/gorilla/csrf"
 )
 
 // CSRFExemptPrefixes are a list of routes that are exempt from CSRF protection
@@ -27,6 +27,14 @@ func CSRFExceptions(handler http.Handler) http.HandlerFunc {
 			}
 		}
 		handler.ServeHTTP(w, r)
+	}
+}
+
+// MarkPlaintextHTTP tells gorilla/csrf that the request is intentionally being
+// served over HTTP so same-origin checks don't assume TLS semantics.
+func MarkPlaintextHTTP(handler http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(w, csrf.PlaintextHTTPRequest(r))
 	}
 }
 

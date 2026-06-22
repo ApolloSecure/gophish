@@ -245,7 +245,7 @@ func (m *MailLog) Generate(msg *gomail.Message) error {
 		msg.SetBody("text/plain", text)
 	}
 	if c.Template.HTML != "" {
-		html, err := ExecuteTemplate(c.Template.HTML, ptx)
+		html, err := ExecuteHTMLTemplate(c.Template.HTML, ptx)
 		if err != nil {
 			log.Warn(err)
 		}

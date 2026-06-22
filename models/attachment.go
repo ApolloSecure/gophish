@@ -141,7 +141,7 @@ func (a *Attachment) ApplyTemplate(ptx PhishingTemplateContext) (io.Reader, erro
 		if err != nil {
 			return nil, err
 		}
-		processedAttachment, err := ExecuteTemplate(string(b), ptx)
+		processedAttachment, err := ExecuteHTMLTemplate(string(b), ptx)
 		if err != nil {
 			return nil, err
 		}

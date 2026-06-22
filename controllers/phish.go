@@ -284,7 +284,7 @@ func renderPhishResponse(w http.ResponseWriter, r *http.Request, ptx models.Phis
 		}
 	}
 	// Otherwise, we just need to write out the templated HTML
-	html, err := models.ExecuteTemplate(p.HTML, ptx)
+	html, err := models.ExecuteHTMLTemplate(p.HTML, ptx)
 	if err != nil {
 		log.Error(err)
 		http.NotFound(w, r)
