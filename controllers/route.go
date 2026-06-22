@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	csrf "filippo.io/csrf/gorilla"
 	"github.com/NYTimes/gziphandler"
 	"github.com/gophish/gophish/auth"
 	"github.com/gophish/gophish/config"
@@ -25,7 +26,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/jordan-wright/unindexed"
-	csrf "filippo.io/csrf/gorilla"
 )
 
 // AdminServerOption is a functional option that is used to configure the
