@@ -39,14 +39,16 @@ type GroupSummary struct {
 
 // GroupTarget is used for a many-to-many relationship between 1..* Groups and 1..* Targets
 type GroupTarget struct {
-	GroupId  int64 `json:"-"`
-	TargetId int64 `json:"-"`
+	GroupId      int64        `json:"-"`
+	TargetId     int64        `json:"-"`
+	CustomFields CustomFields `json:"-" gorm:"column:custom_fields"`
 }
 
 // Target contains the fields needed for individual targets specified by the user
 // Groups contain 1..* Targets, but 1 Target may belong to 1..* Groups
 type Target struct {
-	Id int64 `json:"-"`
+	Id           int64        `json:"-"`
+	CustomFields CustomFields `json:"custom_fields" gorm:"-"`
 	BaseRecipient
 }
 
@@ -101,6 +103,13 @@ func (g *Group) Validate() error {
 		return ErrGroupNameNotSpecified
 	case len(g.Targets) == 0:
 		return ErrNoTargetsSpecified
+	}
+	for _, target := range g.Targets {
+		if target.CustomFields != nil {
+			if err := target.CustomFields.Validate(); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -217,7 +226,8 @@ func PostGroup(g *Group) error {
 		tx.Rollback()
 		return err
 	}
-	return nil
+	g.Targets, err = GetTargets(g.Id)
+	return err
 }
 
 // PutGroup updates the given group if found in the database.
@@ -272,6 +282,16 @@ func PutGroup(g *Group) error {
 				tx.Rollback()
 				return err
 			}
+			if nt.CustomFields != nil {
+				err = tx.Model(&GroupTarget{}).
+					Where("group_id=? and target_id=?", g.Id, nt.Id).
+					Update("custom_fields", nt.CustomFields).Error
+				if err != nil {
+					log.Error(err)
+					tx.Rollback()
+					return err
+				}
+			}
 			continue
 		}
 		// Otherwise, add target if not in database
@@ -285,6 +305,7 @@ func PutGroup(g *Group) error {
 	err = tx.Save(g).Error
 	if err != nil {
 		log.Error(err)
+		tx.Rollback()
 		return err
 	}
 	err = tx.Commit().Error
@@ -292,7 +313,8 @@ func PutGroup(g *Group) error {
 		tx.Rollback()
 		return err
 	}
-	return nil
+	g.Targets, err = GetTargets(g.Id)
+	return err
 }
 
 // DeleteGroup deletes a given group by group ID and user ID
@@ -313,6 +335,12 @@ func DeleteGroup(g *Group) error {
 }
 
 func insertTargetIntoGroup(tx *gorm.DB, t Target, gid int64) error {
+	customFields := t.CustomFields
+	if t.CustomFields != nil {
+		if err := t.CustomFields.Validate(); err != nil {
+			return err
+		}
+	}
 	if _, err := mail.ParseAddress(t.Email); err != nil {
 		log.WithFields(logrus.Fields{
 			"email": t.Email,
@@ -335,7 +363,7 @@ func insertTargetIntoGroup(tx *gorm.DB, t Target, gid int64) error {
 		}).Error(err)
 		return err
 	}
-	err = tx.Save(&GroupTarget{GroupId: gid, TargetId: t.Id}).Error
+	err = tx.Save(&GroupTarget{GroupId: gid, TargetId: t.Id, CustomFields: customFields}).Error
 	if err != nil {
 		log.Error(err)
 		return err
@@ -367,7 +395,36 @@ func UpdateTarget(tx *gorm.DB, target Target) error {
 
 // GetTargets performs a many-to-many select to get all the Targets for a Group
 func GetTargets(gid int64) ([]Target, error) {
-	ts := []Target{}
-	err := db.Table("targets").Select("targets.id, targets.email, targets.first_name, targets.last_name, targets.position").Joins("left join group_targets gt ON targets.id = gt.target_id").Where("gt.group_id=?", gid).Scan(&ts).Error
-	return ts, err
+	type targetRow struct {
+		Id           int64
+		Email        string
+		FirstName    string
+		LastName     string
+		Position     string
+		CustomFields CustomFields `gorm:"column:custom_fields"`
+	}
+	rows := []targetRow{}
+	err := db.Table("targets").
+		Select("targets.id, targets.email, targets.first_name, targets.last_name, targets.position, gt.custom_fields").
+		Joins("left join group_targets gt ON targets.id = gt.target_id").
+		Where("gt.group_id=?", gid).
+		Order("targets.id ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	ts := make([]Target, 0, len(rows))
+	for _, row := range rows {
+		ts = append(ts, Target{
+			Id:           row.Id,
+			CustomFields: row.CustomFields,
+			BaseRecipient: BaseRecipient{
+				Email:     row.Email,
+				FirstName: row.FirstName,
+				LastName:  row.LastName,
+				Position:  row.Position,
+			},
+		})
+	}
+	return ts, nil
 }

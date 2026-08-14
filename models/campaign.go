@@ -551,6 +551,7 @@ func PostCampaign(c *Campaign, uid int64) error {
 			resultMap[t.Email] = true
 			sendDate := c.generateSendDate(recipientIndex, totalRecipients)
 			r := &Result{
+				CustomFields: cloneCustomFields(t.CustomFields),
 				BaseRecipient: BaseRecipient{
 					Email:     t.Email,
 					Position:  t.Position,

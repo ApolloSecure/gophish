@@ -213,7 +213,7 @@ func (ps *PhishingServer) PhishHandler(w http.ResponseWriter, r *http.Request) {
 	var ptx models.PhishingTemplateContext
 	// Check for a preview
 	if preview, ok := ctx.Get(r, "result").(models.EmailRequest); ok {
-		ptx, err = models.NewPhishingTemplateContext(&preview, preview.BaseRecipient, preview.RId)
+		ptx, err = models.NewPhishingTemplateContext(&preview, preview.BaseRecipient, preview.CustomFields, preview.RId)
 		if err != nil {
 			log.Error(err)
 			http.NotFound(w, r)
@@ -257,7 +257,7 @@ func (ps *PhishingServer) PhishHandler(w http.ResponseWriter, r *http.Request) {
 			log.Error(err)
 		}
 	}
-	ptx, err = models.NewPhishingTemplateContext(&c, rs.BaseRecipient, rs.RId)
+	ptx, err = models.NewPhishingTemplateContext(&c, rs.BaseRecipient, rs.CustomFields, rs.RId)
 	if err != nil {
 		log.Error(err)
 		http.NotFound(w, r)

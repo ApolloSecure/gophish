@@ -152,6 +152,23 @@ func (s *ModelsSuite) TestCampaignGetResults(c *check.C) {
 	c.Assert(len(campaign.Results), check.Equals, len(got.Results))
 }
 
+func (s *ModelsSuite) TestCampaignSnapshotsGroupCustomFields(c *check.C) {
+	campaign := s.createCampaignDependencies(c)
+	group, err := GetGroupByName(campaign.Groups[0].Name, campaign.UserId)
+	c.Assert(err, check.Equals, nil)
+	group.Targets[0].CustomFields = CustomFields{"Department": "Finance"}
+	c.Assert(PutGroup(&group), check.Equals, nil)
+
+	c.Assert(PostCampaign(&campaign, campaign.UserId), check.Equals, nil)
+	c.Assert(campaign.Results[0].CustomFields["Department"], check.Equals, "Finance")
+
+	group.Targets[0].CustomFields = CustomFields{"Department": "Legal"}
+	c.Assert(PutGroup(&group), check.Equals, nil)
+	result, err := GetResult(campaign.Results[0].RId)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(result.CustomFields["Department"], check.Equals, "Finance")
+}
+
 func setupCampaignDependencies(b *testing.B, size int) {
 	group := Group{Name: "Test Group"}
 	// Create a large group of 5000 members

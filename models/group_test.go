@@ -1,12 +1,30 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/jinzhu/gorm"
 	"gopkg.in/check.v1"
 )
+
+func (s *ModelsSuite) TestTargetCustomFieldsJSONSemantics(c *check.C) {
+	target := Target{}
+	c.Assert(json.Unmarshal([]byte(`{"email":"test@example.com"}`), &target), check.Equals, nil)
+	c.Assert(target.CustomFields, check.IsNil)
+
+	c.Assert(json.Unmarshal([]byte(`{"email":"test@example.com","custom_fields":{}}`), &target), check.Equals, nil)
+	c.Assert(target.CustomFields, check.DeepEquals, CustomFields{})
+
+	c.Assert(json.Unmarshal([]byte(`{"email":"test@example.com","custom_fields":{"Department":"Finance"}}`), &target), check.Equals, nil)
+	c.Assert(target.CustomFields["Department"], check.Equals, "Finance")
+
+	err := json.Unmarshal([]byte(`{"email":"test@example.com","custom_fields":{"EmployeeCount":42}}`), &target)
+	c.Assert(err, check.NotNil)
+	err = json.Unmarshal([]byte(`{"email":"test@example.com","custom_fields":{"invalid-key":"value"}}`), &target)
+	c.Assert(err, check.NotNil)
+}
 
 func (s *ModelsSuite) TestPostGroup(c *check.C) {
 	g := Group{Name: "Test Group"}
@@ -92,6 +110,56 @@ func (s *ModelsSuite) TestGetGroup(c *check.C) {
 	c.Assert(len(group.Targets), check.Equals, 1)
 	c.Assert(group.Name, check.Equals, "Test Group")
 	c.Assert(group.Targets[0].Email, check.Equals, "test@example.com")
+}
+
+func (s *ModelsSuite) TestCustomFieldsAreScopedToGroup(c *check.C) {
+	first := &Group{
+		Name:   "First Group",
+		UserId: 1,
+		Targets: []Target{{
+			CustomFields:  CustomFields{"AccountName": "First Account"},
+			BaseRecipient: BaseRecipient{Email: "shared@example.com"},
+		}},
+	}
+	second := &Group{
+		Name:   "Second Group",
+		UserId: 1,
+		Targets: []Target{{
+			CustomFields:  CustomFields{"AccountName": "Second Account"},
+			BaseRecipient: BaseRecipient{Email: "shared@example.com"},
+		}},
+	}
+	c.Assert(PostGroup(first), check.Equals, nil)
+	c.Assert(PostGroup(second), check.Equals, nil)
+
+	gotFirst, err := GetGroup(first.Id, first.UserId)
+	c.Assert(err, check.Equals, nil)
+	gotSecond, err := GetGroup(second.Id, second.UserId)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(gotFirst.Targets[0].CustomFields["AccountName"], check.Equals, "First Account")
+	c.Assert(gotSecond.Targets[0].CustomFields["AccountName"], check.Equals, "Second Account")
+}
+
+func (s *ModelsSuite) TestPutGroupCustomFieldSemantics(c *check.C) {
+	group := &Group{
+		Name:   "Test Group",
+		UserId: 1,
+		Targets: []Target{{
+			CustomFields:  CustomFields{"Department": "Finance"},
+			BaseRecipient: BaseRecipient{Email: "test@example.com"},
+		}},
+	}
+	c.Assert(PostGroup(group), check.Equals, nil)
+
+	// Omitting custom_fields preserves the existing membership values.
+	group.Targets = []Target{{BaseRecipient: BaseRecipient{Email: "test@example.com"}}}
+	c.Assert(PutGroup(group), check.Equals, nil)
+	c.Assert(group.Targets[0].CustomFields["Department"], check.Equals, "Finance")
+
+	// An explicit empty object clears the membership values.
+	group.Targets[0].CustomFields = CustomFields{}
+	c.Assert(PutGroup(group), check.Equals, nil)
+	c.Assert(group.Targets[0].CustomFields, check.DeepEquals, CustomFields{})
 }
 
 func (s *ModelsSuite) TestGetGroupNoGroups(c *check.C) {
