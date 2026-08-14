@@ -1,0 +1,232 @@
+openapi: 3.0.3
+info:
+  title: Gophish API
+  version: "1.0"
+  description: Apollo Gophish fork API additions for tenant-scoped campaigns.
+paths:
+  /api/campaigns/:
+    get:
+      summary: List campaigns
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: page
+          in: query
+          description: One-based page number for tenant-filtered requests.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Page size for tenant-filtered requests.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: include_results
+          in: query
+          description: Include results, timeline, and summary. Requires tenant_id.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Campaigns owned by the authenticated user, optionally filtered by tenant_id. Tenant-filtered results are ordered by created_date descending, then id descending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+        "400":
+          $ref: "#/components/responses/InvalidTenantId"
+    post:
+      summary: Create a campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignCreate"
+      responses:
+        "201":
+          description: Campaign created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "400":
+          $ref: "#/components/responses/InvalidTenantId"
+  /api/campaigns/{id}:
+    get:
+      summary: Get a campaign
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Campaign details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "400":
+          $ref: "#/components/responses/InvalidTenantId"
+        "404":
+          description: Campaign not found for the authenticated user and supplied tenant.
+  /api/campaigns/{id}/results:
+    get:
+      summary: Get campaign results
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Campaign results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignResults"
+        "400":
+          $ref: "#/components/responses/InvalidTenantId"
+        "404":
+          description: Campaign not found for the authenticated user and supplied tenant.
+components:
+  parameters:
+    CampaignId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    TenantId:
+      name: tenant_id
+      in: query
+      required: false
+      description: Exact tenant identifier beneath the authenticated Gophish user.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+  responses:
+    InvalidTenantId:
+      description: Invalid tenant_id or query parameter.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    CampaignCreate:
+      type: object
+      required: [name, groups, template, page, smtp, url]
+      properties:
+        tenant_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 255
+          description: Immutable after campaign creation. Omission persists as null.
+        name:
+          type: string
+        groups:
+          type: array
+          items:
+            type: object
+        template:
+          type: object
+        page:
+          type: object
+        smtp:
+          type: object
+        url:
+          type: string
+          format: uri
+        launch_date:
+          type: string
+          format: date-time
+          nullable: true
+        send_by_date:
+          type: string
+          format: date-time
+          nullable: true
+    Campaign:
+      allOf:
+        - $ref: "#/components/schemas/CampaignCreate"
+        - type: object
+          required: [id, tenant_id, status]
+          properties:
+            id:
+              type: integer
+              format: int64
+            tenant_id:
+              type: string
+              nullable: true
+              minLength: 1
+              maxLength: 255
+            status:
+              type: string
+            created_date:
+              type: string
+              format: date-time
+            completed_date:
+              type: string
+              format: date-time
+              nullable: true
+            results:
+              type: array
+              items:
+                type: object
+            timeline:
+              type: array
+              items:
+                type: object
+            summary:
+              $ref: "#/components/schemas/CampaignSummary"
+    CampaignResults:
+      type: object
+      required: [id, tenant_id, name, status]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 255
+        name:
+          type: string
+        status:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+        timeline:
+          type: array
+          items:
+            type: object
+        summary:
+          $ref: "#/components/schemas/CampaignSummary"
+    CampaignSummary:
+      type: object
+      required: [total, sent, opened, clicked, submitted_data, email_reported, error]
+      properties:
+        total: {type: integer, format: int64}
+        sent: {type: integer, format: int64}
+        opened: {type: integer, format: int64}
+        clicked: {type: integer, format: int64}
+        submitted_data: {type: integer, format: int64}
+        email_reported: {type: integer, format: int64}
+        error: {type: integer, format: int64}
+    Error:
+      type: object
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        message:
+          type: string

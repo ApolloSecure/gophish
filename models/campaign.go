@@ -3,6 +3,7 @@ package models
 import (
 	"errors"
 	"net/url"
+	"strings"
 	"time"
 
 	log "github.com/gophish/gophish/logger"
@@ -13,33 +14,37 @@ import (
 
 // Campaign is a struct representing a created campaign
 type Campaign struct {
-	Id            int64     `json:"id"`
-	UserId        int64     `json:"-"`
-	Name          string    `json:"name" sql:"not null"`
-	CreatedDate   time.Time `json:"created_date"`
-	LaunchDate    time.Time `json:"launch_date"`
-	SendByDate    time.Time `json:"send_by_date"`
-	CompletedDate time.Time `json:"completed_date"`
-	TemplateId    int64     `json:"-"`
-	Template      Template  `json:"template"`
-	PageId        int64     `json:"-"`
-	Page          Page      `json:"page"`
-	Status        string    `json:"status"`
-	Results       []Result  `json:"results,omitempty"`
-	Groups        []Group   `json:"groups,omitempty"`
-	Events        []Event   `json:"timeline,omitempty"`
-	SMTPId        int64     `json:"-"`
-	SMTP          SMTP      `json:"smtp"`
-	URL           string    `json:"url"`
+	Id            int64          `json:"id"`
+	UserId        int64          `json:"-"`
+	TenantId      *string        `json:"tenant_id" gorm:"column:tenant_id;type:varchar(255)"`
+	Name          string         `json:"name" sql:"not null"`
+	CreatedDate   time.Time      `json:"created_date"`
+	LaunchDate    time.Time      `json:"launch_date"`
+	SendByDate    time.Time      `json:"send_by_date"`
+	CompletedDate time.Time      `json:"completed_date"`
+	TemplateId    int64          `json:"-"`
+	Template      Template       `json:"template"`
+	PageId        int64          `json:"-"`
+	Page          Page           `json:"page"`
+	Status        string         `json:"status"`
+	Results       []Result       `json:"results,omitempty"`
+	Groups        []Group        `json:"groups,omitempty"`
+	Events        []Event        `json:"timeline,omitempty"`
+	SMTPId        int64          `json:"-"`
+	SMTP          SMTP           `json:"smtp"`
+	URL           string         `json:"url"`
+	Summary       *CampaignStats `json:"summary,omitempty" gorm:"-"`
 }
 
 // CampaignResults is a struct representing the results from a campaign
 type CampaignResults struct {
-	Id      int64    `json:"id"`
-	Name    string   `json:"name"`
-	Status  string   `json:"status"`
-	Results []Result `json:"results,omitempty"`
-	Events  []Event  `json:"timeline,omitempty"`
+	Id       int64          `json:"id"`
+	TenantId *string        `json:"tenant_id" gorm:"column:tenant_id"`
+	Name     string         `json:"name"`
+	Status   string         `json:"status"`
+	Results  []Result       `json:"results,omitempty"`
+	Events   []Event        `json:"timeline,omitempty"`
+	Summary  *CampaignStats `json:"summary,omitempty" gorm:"-"`
 }
 
 // CampaignSummaries is a struct representing the overview of campaigns
@@ -126,11 +131,17 @@ var ErrSMTPNotFound = errors.New("Sending profile not found")
 // launch date
 var ErrInvalidSendByDate = errors.New("The launch date must be before the \"send emails by\" date")
 
+// ErrInvalidTenantID indicates that a supplied tenant identifier is invalid.
+var ErrInvalidTenantID = errors.New("tenant_id must be a non-empty string of at most 255 characters without surrounding whitespace")
+
 // RecipientParameter is the URL parameter that points to the result ID for a recipient.
 const RecipientParameter = "rid"
 
 // Validate checks to make sure there are no invalid fields in a submitted campaign
 func (c *Campaign) Validate() error {
+	if err := ValidateTenantID(c.TenantId); err != nil {
+		return err
+	}
 	switch {
 	case c.Name == "":
 		return ErrCampaignNameNotSpecified
@@ -144,6 +155,18 @@ func (c *Campaign) Validate() error {
 		return ErrSMTPNotSpecified
 	case !c.SendByDate.IsZero() && !c.LaunchDate.IsZero() && c.SendByDate.Before(c.LaunchDate):
 		return ErrInvalidSendByDate
+	}
+	return nil
+}
+
+// ValidateTenantID validates a tenant identifier while allowing nil for
+// backwards compatibility with campaigns created before tenant scoping.
+func ValidateTenantID(tenantID *string) error {
+	if tenantID == nil {
+		return nil
+	}
+	if *tenantID == "" || len(*tenantID) > 255 || strings.TrimSpace(*tenantID) != *tenantID {
+		return ErrInvalidTenantID
 	}
 	return nil
 }
@@ -317,6 +340,179 @@ func GetCampaigns(uid int64) ([]Campaign, error) {
 	return cs, err
 }
 
+// GetCampaignsByTenant returns campaigns owned by the user for an exact tenant
+// identifier match. Related campaign metadata is loaded in a bounded number of
+// queries. Results, events, and summaries are loaded only when requested.
+func GetCampaignsByTenant(uid int64, tenantID string, includeResults bool) ([]Campaign, error) {
+	return GetCampaignsByTenantPage(uid, tenantID, includeResults, 1, 50)
+}
+
+// GetCampaignsByTenantPage returns one page of tenant campaigns, ordered by
+// creation date descending with ID as a deterministic tie-breaker.
+func GetCampaignsByTenantPage(uid int64, tenantID string, includeResults bool, page int, limit int) ([]Campaign, error) {
+	cs := []Campaign{}
+	err := db.Where("user_id = ? AND tenant_id = ?", uid, tenantID).
+		Order("created_date DESC, id DESC").
+		Limit(limit).
+		Offset((page - 1) * limit).
+		Find(&cs).Error
+	if err != nil {
+		log.Error(err)
+		return cs, err
+	}
+	if len(cs) == 0 {
+		return cs, nil
+	}
+	if err = loadCampaignMetadata(cs); err != nil {
+		return cs, err
+	}
+	if includeResults {
+		if err = loadCampaignResults(cs, uid); err != nil {
+			return cs, err
+		}
+	}
+	return cs, nil
+}
+
+func loadCampaignMetadata(cs []Campaign) error {
+	templateIDs := make([]int64, 0, len(cs))
+	pageIDs := make([]int64, 0, len(cs))
+	smtpIDs := make([]int64, 0, len(cs))
+	for i := range cs {
+		templateIDs = append(templateIDs, cs[i].TemplateId)
+		pageIDs = append(pageIDs, cs[i].PageId)
+		smtpIDs = append(smtpIDs, cs[i].SMTPId)
+	}
+
+	templates := []Template{}
+	if err := db.Where("id IN (?)", templateIDs).Find(&templates).Error; err != nil {
+		return err
+	}
+	attachments := []Attachment{}
+	if err := db.Where("template_id IN (?)", templateIDs).Find(&attachments).Error; err != nil && err != gorm.ErrRecordNotFound {
+		return err
+	}
+	templateMap := make(map[int64]Template, len(templates))
+	for _, template := range templates {
+		template.Attachments = []Attachment{}
+		templateMap[template.Id] = template
+	}
+	for _, attachment := range attachments {
+		template := templateMap[attachment.TemplateId]
+		template.Attachments = append(template.Attachments, attachment)
+		templateMap[attachment.TemplateId] = template
+	}
+
+	pages := []Page{}
+	if err := db.Where("id IN (?)", pageIDs).Find(&pages).Error; err != nil {
+		return err
+	}
+	pageMap := make(map[int64]Page, len(pages))
+	for _, page := range pages {
+		pageMap[page.Id] = page
+	}
+
+	smtps := []SMTP{}
+	if err := db.Where("id IN (?)", smtpIDs).Find(&smtps).Error; err != nil {
+		return err
+	}
+	headers := []Header{}
+	if err := db.Where("smtp_id IN (?)", smtpIDs).Find(&headers).Error; err != nil && err != gorm.ErrRecordNotFound {
+		return err
+	}
+	smtpMap := make(map[int64]SMTP, len(smtps))
+	for _, smtp := range smtps {
+		smtp.Headers = []Header{}
+		smtpMap[smtp.Id] = smtp
+	}
+	for _, header := range headers {
+		smtp := smtpMap[header.SMTPId]
+		smtp.Headers = append(smtp.Headers, header)
+		smtpMap[header.SMTPId] = smtp
+	}
+
+	for i := range cs {
+		if template, ok := templateMap[cs[i].TemplateId]; ok {
+			cs[i].Template = template
+		} else {
+			cs[i].Template = Template{Name: "[Deleted]"}
+		}
+		if page, ok := pageMap[cs[i].PageId]; ok {
+			cs[i].Page = page
+		} else {
+			cs[i].Page = Page{Name: "[Deleted]"}
+		}
+		if smtp, ok := smtpMap[cs[i].SMTPId]; ok {
+			cs[i].SMTP = smtp
+		} else {
+			cs[i].SMTP = SMTP{Name: "[Deleted]"}
+		}
+	}
+	return nil
+}
+
+func loadCampaignResults(cs []Campaign, uid int64) error {
+	campaignIDs := make([]int64, 0, len(cs))
+	byID := make(map[int64]int, len(cs))
+	for i := range cs {
+		campaignIDs = append(campaignIDs, cs[i].Id)
+		byID[cs[i].Id] = i
+		cs[i].Results = []Result{}
+		cs[i].Events = []Event{}
+	}
+	results := []Result{}
+	if err := db.Where("campaign_id IN (?) AND user_id = ?", campaignIDs, uid).Find(&results).Error; err != nil {
+		return err
+	}
+	for _, result := range results {
+		if i, ok := byID[result.CampaignId]; ok {
+			cs[i].Results = append(cs[i].Results, result)
+		}
+	}
+	events := []Event{}
+	if err := db.Where("campaign_id IN (?)", campaignIDs).Find(&events).Error; err != nil {
+		return err
+	}
+	for _, event := range events {
+		if i, ok := byID[event.CampaignId]; ok {
+			cs[i].Events = append(cs[i].Events, event)
+		}
+	}
+	for i := range cs {
+		summary := campaignStatsFromResults(cs[i].Results)
+		cs[i].Summary = &summary
+	}
+	return nil
+}
+
+func campaignStatsFromResults(results []Result) CampaignStats {
+	stats := CampaignStats{Total: int64(len(results))}
+	for _, result := range results {
+		if result.Reported {
+			stats.EmailReported++
+		}
+		switch result.Status {
+		case EventDataSubmit:
+			stats.SubmittedData++
+			stats.ClickedLink++
+			stats.OpenedEmail++
+			stats.EmailsSent++
+		case EventClicked:
+			stats.ClickedLink++
+			stats.OpenedEmail++
+			stats.EmailsSent++
+		case EventOpened:
+			stats.OpenedEmail++
+			stats.EmailsSent++
+		case EventSent:
+			stats.EmailsSent++
+		case Error:
+			stats.Error++
+		}
+	}
+	return stats
+}
+
 // GetCampaignSummaries gets the summary objects for all the campaigns
 // owned by the current user
 func GetCampaignSummaries(uid int64) (CampaignSummaries, error) {
@@ -406,10 +602,34 @@ func GetCampaign(id int64, uid int64) (Campaign, error) {
 	return c, err
 }
 
+// GetCampaignForTenant applies tenant_id as an additional ownership check.
+func GetCampaignForTenant(id int64, uid int64, tenantID string) (Campaign, error) {
+	c := Campaign{}
+	err := db.Where("id = ? AND user_id = ? AND tenant_id = ?", id, uid, tenantID).Find(&c).Error
+	if err != nil {
+		return c, err
+	}
+	err = c.getDetails()
+	return c, err
+}
+
 // GetCampaignResults returns just the campaign results for the given campaign
 func GetCampaignResults(id int64, uid int64) (CampaignResults, error) {
+	return getCampaignResults(id, uid, nil)
+}
+
+// GetCampaignResultsForTenant applies tenant_id as an additional ownership check.
+func GetCampaignResultsForTenant(id int64, uid int64, tenantID string) (CampaignResults, error) {
+	return getCampaignResults(id, uid, &tenantID)
+}
+
+func getCampaignResults(id int64, uid int64, tenantID *string) (CampaignResults, error) {
 	cr := CampaignResults{}
-	err := db.Table("campaigns").Where("id=? and user_id=?", id, uid).Find(&cr).Error
+	query := db.Table("campaigns").Where("id=? and user_id=?", id, uid)
+	if tenantID != nil {
+		query = query.Where("tenant_id = ?", *tenantID)
+	}
+	err := query.Find(&cr).Error
 	if err != nil {
 		log.WithFields(logrus.Fields{
 			"campaign_id": id,
@@ -427,6 +647,8 @@ func GetCampaignResults(id int64, uid int64) (CampaignResults, error) {
 		log.Errorf("%s: events not found for campaign", err)
 		return cr, err
 	}
+	summary := campaignStatsFromResults(cr.Results)
+	cr.Summary = &summary
 	return cr, err
 }
 
