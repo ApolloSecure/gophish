@@ -42,6 +42,11 @@ var TEMPLATE_TAGS = [{
         id: 9,
         name: 'BaseURL',
         description: 'The base URL with the path and rid parameter stripped. Useful for making links to static files.'
+    },
+    {
+        id: 10,
+        name: 'Custom.FieldName',
+        description: 'A group-scoped custom field supplied through the API.'
     }
 ];
 
@@ -54,7 +59,7 @@ var textTestCallback = function (range) {
 }
 
 var matchCallback = function (text, offset) {
-    var pattern = /\{{2}\.?([A-z]|\})*$/,
+    var pattern = /\{{2}\.?([A-Za-z.]|\})*$/,
         match = text.slice(0, offset)
         .match(pattern);
 

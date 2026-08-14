@@ -18,19 +18,20 @@ const PreviewPrefix = "preview-"
 // to send a test email to test an SMTP connection.
 // This type implements the mailer.Mail interface.
 type EmailRequest struct {
-	Id          int64        `json:"-"`
-	Template    Template     `json:"template"`
-	TemplateId  int64        `json:"-"`
-	Page        Page         `json:"page"`
-	PageId      int64        `json:"-"`
-	SMTP        SMTP         `json:"smtp"`
-	URL         string       `json:"url"`
-	Tracker     string       `json:"tracker" gorm:"-"`
-	TrackingURL string       `json:"tracking_url" gorm:"-"`
-	UserId      int64        `json:"-"`
-	ErrorChan   chan (error) `json:"-" gorm:"-"`
-	RId         string       `json:"id"`
-	FromAddress string       `json:"-"`
+	Id           int64        `json:"-"`
+	Template     Template     `json:"template"`
+	TemplateId   int64        `json:"-"`
+	Page         Page         `json:"page"`
+	PageId       int64        `json:"-"`
+	SMTP         SMTP         `json:"smtp"`
+	URL          string       `json:"url"`
+	Tracker      string       `json:"tracker" gorm:"-"`
+	TrackingURL  string       `json:"tracking_url" gorm:"-"`
+	UserId       int64        `json:"-"`
+	ErrorChan    chan (error) `json:"-" gorm:"-"`
+	RId          string       `json:"id"`
+	FromAddress  string       `json:"-"`
+	CustomFields CustomFields `json:"custom_fields" gorm:"column:custom_fields"`
 	BaseRecipient
 }
 
@@ -50,6 +51,11 @@ func (s *EmailRequest) Validate() error {
 		return ErrEmailNotSpecified
 	case s.FromAddress == "" && s.SMTP.FromAddress == "":
 		return ErrFromAddressNotSpecified
+	}
+	if s.CustomFields != nil {
+		if err := s.CustomFields.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -106,7 +112,7 @@ func (s *EmailRequest) Generate(msg *gomail.Message) error {
 	}
 	msg.SetAddressHeader("From", f.Address, f.Name)
 
-	ptx, err := NewPhishingTemplateContext(s, s.BaseRecipient, s.RId)
+	ptx, err := NewPhishingTemplateContext(s, s.BaseRecipient, s.CustomFields, s.RId)
 	if err != nil {
 		return err
 	}

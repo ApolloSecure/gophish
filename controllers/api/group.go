@@ -30,7 +30,7 @@ func (as *Server) Groups(w http.ResponseWriter, r *http.Request) {
 		// Put the request into a group
 		err := json.NewDecoder(r.Body).Decode(&g)
 		if err != nil {
-			JSONResponse(w, models.Response{Success: false, Message: "Invalid JSON structure"}, http.StatusBadRequest)
+			JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusBadRequest)
 			return
 		}
 		_, err = models.GetGroupByName(g.Name, ctx.Get(r, "user_id").(int64))
@@ -89,7 +89,7 @@ func (as *Server) Group(w http.ResponseWriter, r *http.Request) {
 		err = json.NewDecoder(r.Body).Decode(&g)
 		if err != nil {
 			log.Errorf("error decoding group: %v", err)
-			JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusInternalServerError)
+			JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusBadRequest)
 			return
 		}
 		if g.Id != id {

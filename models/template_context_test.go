@@ -21,6 +21,7 @@ func (m mockTemplateContext) getBaseURL() string {
 
 func (s *ModelsSuite) TestNewTemplateContext(c *check.C) {
 	r := Result{
+		CustomFields: CustomFields{"Department": "Finance"},
 		BaseRecipient: BaseRecipient{
 			FirstName: "Foo",
 			LastName:  "Bar",
@@ -39,9 +40,33 @@ func (s *ModelsSuite) TestNewTemplateContext(c *check.C) {
 		TrackingURL:   fmt.Sprintf("%s/track?rid=%s", ctx.URL, r.RId),
 		From:          "From Address",
 		RId:           r.RId,
+		Custom:        r.CustomFields,
 	}
 	expected.Tracker = "<img alt='' style='display: none' src='" + expected.TrackingURL + "'/>"
-	got, err := NewPhishingTemplateContext(ctx, r.BaseRecipient, r.RId)
+	got, err := NewPhishingTemplateContext(ctx, r.BaseRecipient, r.CustomFields, r.RId)
 	c.Assert(err, check.Equals, nil)
 	c.Assert(got, check.DeepEquals, expected)
+}
+
+func (s *ModelsSuite) TestCustomFieldTemplating(c *check.C) {
+	data := PhishingTemplateContext{
+		Custom: CustomFields{
+			"AccountName": "A & B <Holdings>",
+		},
+	}
+
+	text, err := ExecuteTemplate("Hello {{.Custom.AccountName}}", data)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(text, check.Equals, "Hello A & B <Holdings>")
+
+	html, err := ExecuteHTMLTemplate("<p>{{.Custom.AccountName}}</p>", data)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(html, check.Equals, "<p>A &amp; B &lt;Holdings&gt;</p>")
+
+	conditional, err := ExecuteTemplate("{{if .Custom.Missing}}yes{{else}}no{{end}}", data)
+	c.Assert(err, check.Equals, nil)
+	c.Assert(conditional, check.Equals, "no")
+
+	c.Assert(ValidateTemplate("{{.Custom.AnyValidKey}}"), check.Equals, nil)
+	c.Assert(ValidateTemplate("{{.Custom.invalid-key}}"), check.Equals, errUnsupportedTemplateSyntax)
 }

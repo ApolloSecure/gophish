@@ -61,13 +61,14 @@ func (s *ModelsSuite) TestEmailRequestGenerate(ch *check.C) {
 	}
 	template := Template{
 		Name:    "Test Template",
-		Subject: "{{.FirstName}} - Subject",
+		Subject: "{{.Custom.Department}} - {{.FirstName}} - Subject",
 		Text:    "{{.Email}} - Text",
 		HTML:    "{{.Email}} - HTML",
 	}
 	req := &EmailRequest{
-		SMTP:     smtp,
-		Template: template,
+		SMTP:         smtp,
+		Template:     template,
+		CustomFields: CustomFields{"Department": "Finance"},
 		BaseRecipient: BaseRecipient{
 			FirstName: "First",
 			LastName:  "Last",
@@ -87,7 +88,7 @@ func (s *ModelsSuite) TestEmailRequestGenerate(ch *check.C) {
 	ch.Assert(err, check.Equals, nil)
 
 	expected := &email.Email{
-		Subject: fmt.Sprintf("%s - Subject", req.FirstName),
+		Subject: fmt.Sprintf("%s - %s - Subject", req.CustomFields["Department"], req.FirstName),
 		Text:    []byte(fmt.Sprintf("%s - Text", req.Email)),
 		HTML:    []byte(fmt.Sprintf("%s - HTML", req.Email)),
 	}
@@ -242,6 +243,9 @@ func (s *ModelsSuite) TestPostSendTestEmailRequest(ch *check.C) {
 		SMTP:       smtp,
 		TemplateId: template.Id,
 		PageId:     page.Id,
+		CustomFields: CustomFields{
+			"Department": "Finance",
+		},
 		BaseRecipient: BaseRecipient{
 			FirstName: "First",
 			LastName:  "Last",
@@ -255,4 +259,5 @@ func (s *ModelsSuite) TestPostSendTestEmailRequest(ch *check.C) {
 	ch.Assert(err, check.Equals, nil)
 	ch.Assert(got.RId, check.Equals, req.RId)
 	ch.Assert(got.Email, check.Equals, req.Email)
+	ch.Assert(got.CustomFields, check.DeepEquals, req.CustomFields)
 }

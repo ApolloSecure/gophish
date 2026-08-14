@@ -27,12 +27,13 @@ type PhishingTemplateContext struct {
 	TrackingURL string
 	RId         string
 	BaseURL     string
+	Custom      CustomFields
 	BaseRecipient
 }
 
 // NewPhishingTemplateContext returns a populated PhishingTemplateContext,
 // parsing the correct fields from the provided TemplateContext and recipient.
-func NewPhishingTemplateContext(ctx TemplateContext, r BaseRecipient, rid string) (PhishingTemplateContext, error) {
+func NewPhishingTemplateContext(ctx TemplateContext, r BaseRecipient, custom CustomFields, rid string) (PhishingTemplateContext, error) {
 	f, err := mail.ParseAddress(ctx.getFromAddress())
 	if err != nil {
 		return PhishingTemplateContext{}, err
@@ -41,7 +42,7 @@ func NewPhishingTemplateContext(ctx TemplateContext, r BaseRecipient, rid string
 	if fn == "" {
 		fn = f.Address
 	}
-	templateURL, err := ExecuteTemplate(ctx.getBaseURL(), newPhishingTemplateContext("", "", "", "", "", "", r))
+	templateURL, err := ExecuteTemplate(ctx.getBaseURL(), newPhishingTemplateContext("", "", "", "", "", "", r, custom))
 	if err != nil {
 		return PhishingTemplateContext{}, err
 	}
@@ -71,10 +72,11 @@ func NewPhishingTemplateContext(ctx TemplateContext, r BaseRecipient, rid string
 		rid,
 		baseURL.String(),
 		r,
+		custom,
 	), nil
 }
 
-func newPhishingTemplateContext(from, url, trackingURL, tracker, rid, baseURL string, recipient BaseRecipient) PhishingTemplateContext {
+func newPhishingTemplateContext(from, url, trackingURL, tracker, rid, baseURL string, recipient BaseRecipient, custom CustomFields) PhishingTemplateContext {
 	return PhishingTemplateContext{
 		From:          from,
 		URL:           url,
@@ -82,6 +84,7 @@ func newPhishingTemplateContext(from, url, trackingURL, tracker, rid, baseURL st
 		Tracker:       tracker,
 		RId:           rid,
 		BaseURL:       baseURL,
+		Custom:        custom,
 		BaseRecipient: recipient,
 	}
 }
@@ -105,6 +108,13 @@ func htmlTemplateEscaper(field, value string) string {
 }
 
 func templateFieldValue(data PhishingTemplateContext, field string) (string, bool) {
+	if strings.HasPrefix(field, "Custom.") {
+		key := strings.TrimPrefix(field, "Custom.")
+		if !customFieldKeyPattern.MatchString(key) || len(key) > maxCustomFieldKeyLen {
+			return "", false
+		}
+		return data.Custom[key], true
+	}
 	switch field {
 	case "From":
 		return data.From, true
@@ -267,7 +277,7 @@ func validateTemplate(text string, isHTML bool) error {
 		},
 		RId: "123456",
 	}
-	ptx, err := NewPhishingTemplateContext(vc, td.BaseRecipient, td.RId)
+	ptx, err := NewPhishingTemplateContext(vc, td.BaseRecipient, CustomFields{}, td.RId)
 	if err != nil {
 		return err
 	}
