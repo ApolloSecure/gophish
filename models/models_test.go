@@ -49,11 +49,18 @@ func (s *ModelsSuite) TearDownTest(c *check.C) {
 	db.Delete(Group{})
 	db.Delete(Target{})
 	db.Delete(GroupTarget{})
+	db.Delete(Header{})
 	db.Delete(SMTP{})
+	db.Delete(Attachment{})
 	db.Delete(Page{})
 	db.Delete(Result{})
+	db.Delete(Event{})
 	db.Delete(MailLog{})
 	db.Delete(Campaign{})
+	db.Delete(EmailRequest{})
+	db.Delete(Tenant{})
+	db.Delete(Webhook{})
+	db.Delete(IMAP{})
 
 	// Reset users table to default state.
 	db.Not("id", 1).Delete(User{})

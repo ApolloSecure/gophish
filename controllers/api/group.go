@@ -33,7 +33,7 @@ func (as *Server) Groups(w http.ResponseWriter, r *http.Request) {
 			JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusBadRequest)
 			return
 		}
-		_, err = models.GetGroupByName(g.Name, ctx.Get(r, "user_id").(int64))
+		_, err = models.GetGroupByNameForTenant(g.Name, ctx.Get(r, "user_id").(int64), g.TenantId)
 		if err != gorm.ErrRecordNotFound {
 			JSONResponse(w, models.Response{Success: false, Message: "Group name already in use"}, http.StatusConflict)
 			return

@@ -16,6 +16,7 @@ import (
 type Group struct {
 	Id           int64     `json:"id"`
 	UserId       int64     `json:"-"`
+	TenantId     *string   `json:"tenant_id" gorm:"column:tenant_id;type:varchar(255)"`
 	Name         string    `json:"name"`
 	ModifiedDate time.Time `json:"modified_date"`
 	Targets      []Target  `json:"targets" sql:"-"`
@@ -48,6 +49,7 @@ type GroupTarget struct {
 // Groups contain 1..* Targets, but 1 Target may belong to 1..* Groups
 type Target struct {
 	Id           int64        `json:"-"`
+	TenantId     *string      `json:"tenant_id" gorm:"column:tenant_id;type:varchar(255)"`
 	CustomFields CustomFields `json:"custom_fields" gorm:"-"`
 	BaseRecipient
 }
@@ -96,8 +98,14 @@ var ErrGroupNameNotSpecified = errors.New("Group name not specified")
 // ErrNoTargetsSpecified is thrown when no targets are specified by the user
 var ErrNoTargetsSpecified = errors.New("No targets specified")
 
+// ErrTenantMismatch indicates an attempted cross-tenant relationship.
+var ErrTenantMismatch = errors.New("tenant ownership mismatch")
+
 // Validate performs validation on a group given by the user
 func (g *Group) Validate() error {
+	if err := ValidateTenantID(g.TenantId); err != nil {
+		return err
+	}
 	switch {
 	case g.Name == "":
 		return ErrGroupNameNotSpecified
@@ -105,6 +113,12 @@ func (g *Group) Validate() error {
 		return ErrNoTargetsSpecified
 	}
 	for _, target := range g.Targets {
+		if err := ValidateTenantID(target.TenantId); err != nil {
+			return err
+		}
+		if target.TenantId != nil && !sameTenant(target.TenantId, g.TenantId) {
+			return ErrTenantMismatch
+		}
 		if target.CustomFields != nil {
 			if err := target.CustomFields.Validate(); err != nil {
 				return err
@@ -199,6 +213,23 @@ func GetGroupByName(n string, uid int64) (Group, error) {
 	return g, err
 }
 
+// GetGroupByNameForTenant returns a group with an exact nullable tenant match.
+func GetGroupByNameForTenant(n string, uid int64, tenantID *string) (Group, error) {
+	g := Group{}
+	query := db.Where("user_id = ? AND name = ?", uid, n)
+	if tenantID == nil {
+		query = query.Where("tenant_id IS NULL")
+	} else {
+		query = query.Where("tenant_id = ?", *tenantID)
+	}
+	err := query.Find(&g).Error
+	if err != nil {
+		return g, err
+	}
+	g.Targets, err = GetTargets(g.Id)
+	return g, err
+}
+
 // PostGroup creates a new group in the database.
 func PostGroup(g *Group) error {
 	if err := g.Validate(); err != nil {
@@ -206,6 +237,13 @@ func PostGroup(g *Group) error {
 	}
 	// Insert the group into the DB
 	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if err := ensureTenant(tx, g.TenantId); err != nil {
+		tx.Rollback()
+		return err
+	}
 	err := tx.Save(g).Error
 	if err != nil {
 		tx.Rollback()
@@ -213,7 +251,7 @@ func PostGroup(g *Group) error {
 		return err
 	}
 	for _, t := range g.Targets {
-		err = insertTargetIntoGroup(tx, t, g.Id)
+		err = insertTargetIntoGroup(tx, t, g.Id, g.TenantId)
 		if err != nil {
 			tx.Rollback()
 			log.Error(err)
@@ -232,6 +270,14 @@ func PostGroup(g *Group) error {
 
 // PutGroup updates the given group if found in the database.
 func PutGroup(g *Group) error {
+	stored := Group{}
+	if err := db.Select("id, tenant_id").Where("id = ? AND user_id = ?", g.Id, g.UserId).First(&stored).Error; err != nil {
+		return err
+	}
+	if g.TenantId != nil && !sameTenant(g.TenantId, stored.TenantId) {
+		return ErrTenantMismatch
+	}
+	g.TenantId = stored.TenantId
 	if err := g.Validate(); err != nil {
 		return err
 	}
@@ -295,7 +341,7 @@ func PutGroup(g *Group) error {
 			continue
 		}
 		// Otherwise, add target if not in database
-		err = insertTargetIntoGroup(tx, nt, g.Id)
+		err = insertTargetIntoGroup(tx, nt, g.Id, g.TenantId)
 		if err != nil {
 			log.Error(err)
 			tx.Rollback()
@@ -334,7 +380,11 @@ func DeleteGroup(g *Group) error {
 	return err
 }
 
-func insertTargetIntoGroup(tx *gorm.DB, t Target, gid int64) error {
+func insertTargetIntoGroup(tx *gorm.DB, t Target, gid int64, tenantID *string) error {
+	if t.TenantId != nil && !sameTenant(t.TenantId, tenantID) {
+		return ErrTenantMismatch
+	}
+	t.TenantId = tenantID
 	customFields := t.CustomFields
 	if t.CustomFields != nil {
 		if err := t.CustomFields.Validate(); err != nil {
@@ -348,7 +398,13 @@ func insertTargetIntoGroup(tx *gorm.DB, t Target, gid int64) error {
 		return err
 	}
 	existing := Target{}
-	err := tx.Where("email = ?", t.Email).First(&existing).Error
+	query := tx.Where("email = ?", t.Email)
+	if tenantID == nil {
+		query = query.Where("tenant_id IS NULL")
+	} else {
+		query = query.Where("tenant_id = ?", *tenantID)
+	}
+	err := query.First(&existing).Error
 	if err == gorm.ErrRecordNotFound {
 		err = tx.Create(&t).Error
 		if err == nil {
@@ -397,6 +453,7 @@ func UpdateTarget(tx *gorm.DB, target Target) error {
 func GetTargets(gid int64) ([]Target, error) {
 	type targetRow struct {
 		Id           int64
+		TenantId     *string `gorm:"column:tenant_id"`
 		Email        string
 		FirstName    string
 		LastName     string
@@ -405,7 +462,7 @@ func GetTargets(gid int64) ([]Target, error) {
 	}
 	rows := []targetRow{}
 	err := db.Table("targets").
-		Select("targets.id, targets.email, targets.first_name, targets.last_name, targets.position, gt.custom_fields").
+		Select("targets.id, targets.tenant_id, targets.email, targets.first_name, targets.last_name, targets.position, gt.custom_fields").
 		Joins("left join group_targets gt ON targets.id = gt.target_id").
 		Where("gt.group_id=?", gid).
 		Order("targets.id ASC").
@@ -417,6 +474,7 @@ func GetTargets(gid int64) ([]Target, error) {
 	for _, row := range rows {
 		ts = append(ts, Target{
 			Id:           row.Id,
+			TenantId:     row.TenantId,
 			CustomFields: row.CustomFields,
 			BaseRecipient: BaseRecipient{
 				Email:     row.Email,
@@ -427,4 +485,11 @@ func GetTargets(gid int64) ([]Target, error) {
 		})
 	}
 	return ts, nil
+}
+
+func sameTenant(left *string, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
