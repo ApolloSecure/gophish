@@ -3,7 +3,35 @@ info:
   title: Gophish API
   version: "1.0"
   description: Apollo Gophish fork API additions for tenant-scoped campaigns.
+security:
+  - bearerApiKey: []
 paths:
+  /api/tenants/{tenantId}:
+    delete:
+      summary: Purge all phishing data owned by a tenant
+      description: Idempotently deletes tenant-owned campaigns, campaign children, groups, memberships, targets, email requests, and the tenant ownership row in one transaction. Legacy null-owned data and shared configuration are retained.
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          description: Exact non-empty tenant identifier. This is never inferred from a name.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+      responses:
+        "200":
+          description: Purge committed. Unknown and previously purged tenants return zero counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantPurgeResult"
+        "400":
+          $ref: "#/components/responses/InvalidTenantId"
+        "401":
+          description: Missing or invalid API key.
+        "500":
+          description: Purge failed and the transaction was rolled back.
   /api/campaigns/:
     get:
       summary: List campaigns
@@ -32,7 +60,7 @@ paths:
             default: false
       responses:
         "200":
-          description: Campaigns owned by the authenticated user, optionally filtered by tenant_id. Tenant-filtered results are ordered by created_date descending, then id descending.
+          description: Campaigns owned by the authenticated user, optionally filtered by tenant_id. Tenant-filtered results are ordered by id descending.
           content:
             application/json:
               schema:
@@ -93,6 +121,11 @@ paths:
         "404":
           description: Campaign not found for the authenticated user and supplied tenant.
 components:
+  securitySchemes:
+    bearerApiKey:
+      type: http
+      scheme: bearer
+      description: Existing Gophish API key.
   parameters:
     CampaignId:
       name: id
@@ -118,6 +151,70 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    TenantPurgeResult:
+      type: object
+      required: [tenant_id, deleted]
+      properties:
+        tenant_id:
+          type: string
+        deleted:
+          $ref: "#/components/schemas/TenantDeletionCounts"
+    TenantDeletionCounts:
+      type: object
+      required: [campaigns, results, events, mail_logs, groups, group_targets, targets, email_requests, tenant]
+      properties:
+        campaigns: {type: integer, format: int64}
+        results: {type: integer, format: int64}
+        events: {type: integer, format: int64}
+        mail_logs: {type: integer, format: int64}
+        groups: {type: integer, format: int64}
+        group_targets: {type: integer, format: int64}
+        targets: {type: integer, format: int64}
+        email_requests: {type: integer, format: int64}
+        tenant: {type: integer, format: int64}
+    GroupCreate:
+      type: object
+      required: [name, targets]
+      properties:
+        tenant_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 255
+          description: Optional ownership identifier inherited by every target. Omission persists as null.
+        name:
+          type: string
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Target"
+    Target:
+      type: object
+      required: [email]
+      properties:
+        tenant_id:
+          type: string
+          nullable: true
+          readOnly: true
+        email:
+          type: string
+          format: email
+        first_name: {type: string}
+        last_name: {type: string}
+        position: {type: string}
+        custom_fields:
+          type: object
+          additionalProperties:
+            type: string
+    EmailRequestOwnership:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 255
+          description: Optional ownership identifier for persisted test-email requests.
     CampaignCreate:
       type: object
       required: [name, groups, template, page, smtp, url]

@@ -70,3 +70,41 @@ jobs:
         GOPHISH_TEST_DB: postgres
         GOPHISH_TEST_POSTGRES_ADMIN_DSN: host=127.0.0.1 port=5432 user=postgres password=postgres dbname=postgres sslmode=disable
       run: go test -p 1 ./...
+
+  mysql:
+    name: MySQL Tenant Storage Tests
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: mysql
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v6
+
+    - name: Set up Go 1.26
+      uses: actions/setup-go@v6
+      with:
+        go-version: "1.26.4"
+        check-latest: true
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Test tenant storage and API (MySQL)
+      env:
+        GOPHISH_TEST_DB: mysql
+        GOPHISH_TEST_MYSQL_ADMIN_DSN: root:root@tcp(127.0.0.1:3306)/mysql?parseTime=true&sql_mode=%27NO_ENGINE_SUBSTITUTION%27
+      run: go test -p 1 ./models ./controllers/api
