@@ -21,6 +21,13 @@ To build Gophish from source, simply run ```git clone https://github.com/gophish
 Fork releases use tags in the form `XXX-apollo.N`, where `XXX` matches the
 base upstream version in `VERSION`.
 
+The ApolloSecure API contract is maintained as
+[`docs/openapi.json`](docs/openapi.json). Each fork release publishes the same
+file as a standalone `openapi.json` release asset. Consumers can pin a release
+with `https://github.com/ApolloSecure/gophish/releases/download/<tag>/openapi.json`
+or follow the latest release at
+`https://github.com/ApolloSecure/gophish/releases/latest/download/openapi.json`.
+
 ### Docker
 You can also use Gophish via the official Docker container [here](https://hub.docker.com/r/gophish/gophish/).
 
