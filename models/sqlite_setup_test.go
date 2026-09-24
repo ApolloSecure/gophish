@@ -2,6 +2,8 @@ package models
 
 import (
 	"database/sql"
+	"os"
+	"strings"
 	"testing"
 
 	"bitbucket.org/liamstask/goose/lib/goose"
@@ -14,6 +16,10 @@ const (
 )
 
 func TestSQLiteTenantMigrationCanBeRolledBackAndReapplied(t *testing.T) {
+	if driver := strings.ToLower(strings.TrimSpace(os.Getenv("GOPHISH_TEST_DB"))); driver != "" && driver != "sqlite3" {
+		t.Skip("SQLite migration test")
+	}
+
 	conf, cleanup, err := testutil.NewTestConfig("tenant_migration_round_trip")
 	if err != nil {
 		t.Fatalf("create SQLite test database: %v", err)
