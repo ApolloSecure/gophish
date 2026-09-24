@@ -12,7 +12,7 @@ const (
 	maxCustomFields      = 50
 	maxCustomFieldKeyLen = 64
 	maxCustomFieldValLen = 4096
-	maxCustomFieldsSize  = 64 * 1024
+	maxCustomFieldsSize  = 65535
 )
 
 var customFieldKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
