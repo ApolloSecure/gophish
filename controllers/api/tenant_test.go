@@ -40,6 +40,15 @@ func TestTenantPurgeEndpointAuthenticationContractAndIdempotency(t *testing.T) {
 		return response
 	}
 
+	standardUser := createUnpriviledgedUser(t, models.RoleUser)
+	standardUserRequest := httptest.NewRequest(http.MethodDelete, "/api/tenants/"+tenantID, nil)
+	standardUserRequest.Header.Set("Authorization", fmt.Sprintf("Bearer %s", standardUser.ApiKey))
+	standardUserResponse := httptest.NewRecorder()
+	ctx.apiServer.ServeHTTP(standardUserResponse, standardUserRequest)
+	if standardUserResponse.Code != http.StatusForbidden {
+		t.Fatalf("standard user purge status = %d, want 403: %s", standardUserResponse.Code, standardUserResponse.Body.String())
+	}
+
 	response := request(tenantID)
 	if response.Code != http.StatusOK {
 		t.Fatalf("purge status = %d: %s", response.Code, response.Body.String())

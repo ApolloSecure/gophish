@@ -71,3 +71,48 @@ DROP INDEX "email_requests_user_tenant_id_idx";
 DROP INDEX "targets_tenant_email_idx";
 DROP INDEX "groups_user_tenant_id_idx";
 DROP TABLE "tenants";
+
+-- SQLite 3.31 (bundled by this project) cannot drop columns directly, so
+-- rebuild the affected tables without tenant_id. This preserves all columns
+-- that existed before this migration, including custom_fields.
+CREATE TABLE "groups_without_tenant" (
+    "id" integer primary key autoincrement,
+    "user_id" bigint,
+    "name" varchar(255),
+    "modified_date" datetime
+);
+INSERT INTO "groups_without_tenant" ("id", "user_id", "name", "modified_date")
+SELECT "id", "user_id", "name", "modified_date" FROM "groups";
+DROP TABLE "groups";
+ALTER TABLE "groups_without_tenant" RENAME TO "groups";
+
+CREATE TABLE "targets_without_tenant" (
+    "id" integer primary key autoincrement,
+    "first_name" varchar(255),
+    "last_name" varchar(255),
+    "email" varchar(255),
+    "position" varchar(255)
+);
+INSERT INTO "targets_without_tenant" ("id", "first_name", "last_name", "email", "position")
+SELECT "id", "first_name", "last_name", "email", "position" FROM "targets";
+DROP TABLE "targets";
+ALTER TABLE "targets_without_tenant" RENAME TO "targets";
+
+CREATE TABLE "email_requests_without_tenant" (
+    "id" integer primary key autoincrement,
+    "user_id" integer,
+    "template_id" integer,
+    "page_id" integer,
+    "first_name" varchar(255),
+    "last_name" varchar(255),
+    "email" varchar(255),
+    "position" varchar(255),
+    "url" varchar(255),
+    "r_id" varchar(255),
+    "from_address" varchar(255),
+    "custom_fields" TEXT
+);
+INSERT INTO "email_requests_without_tenant" ("id", "user_id", "template_id", "page_id", "first_name", "last_name", "email", "position", "url", "r_id", "from_address", "custom_fields")
+SELECT "id", "user_id", "template_id", "page_id", "first_name", "last_name", "email", "position", "url", "r_id", "from_address", "custom_fields" FROM "email_requests";
+DROP TABLE "email_requests";
+ALTER TABLE "email_requests_without_tenant" RENAME TO "email_requests";

@@ -61,7 +61,7 @@ func (as *Server) registerRoutes() {
 	router.HandleFunc("/imap/", as.IMAPServer)
 	router.HandleFunc("/imap/validate", as.IMAPServerValidate)
 	router.HandleFunc("/reset", as.Reset)
-	router.HandleFunc("/tenants/{tenantId}", as.Tenant)
+	router.HandleFunc("/tenants/{tenantId}", mid.Use(as.Tenant, mid.RequirePermission(models.PermissionModifySystem)))
 	router.HandleFunc("/campaigns/", as.Campaigns)
 	router.HandleFunc("/campaigns/summary", as.CampaignsSummary)
 	router.HandleFunc("/campaigns/{id:[0-9]+}", as.Campaign)

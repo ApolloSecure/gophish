@@ -30,6 +30,8 @@ paths:
           $ref: "#/components/responses/InvalidTenantId"
         "401":
           description: Missing or invalid API key.
+        "403":
+          description: The authenticated user does not have system-modification permission.
         "500":
           description: Purge failed and the transaction was rolled back.
   /api/campaigns/:
