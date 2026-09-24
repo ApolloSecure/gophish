@@ -106,17 +106,19 @@ jobs:
                       db \
                       templates \
                       README.md \
+                      docs/openapi.json \
                       VERSION \
                       LICENSE \
                       config.json;
                     rm $BINARY;
                   done
                 done
+                cp docs/openapi.json releases/openapi.json
             - name: Upload to artifacts
               uses: actions/upload-artifact@v7
               with:
                 name: releases
-                path: releases/*.zip
+                path: releases/*
     
     upload:
         name: Upload to the Release
