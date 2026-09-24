@@ -13,6 +13,19 @@ type queryCounter struct {
 	count int64
 }
 
+func (s *ModelsSuite) addTenantGroup(c *check.C, campaign *Campaign, tenantID string) {
+	group := campaign.Groups[0]
+	group.Id = 0
+	group.TenantId = &tenantID
+	for i := range group.Targets {
+		group.Targets[i].Id = 0
+		group.Targets[i].TenantId = nil
+	}
+	c.Assert(PostGroup(&group), check.Equals, nil)
+	campaign.TenantId = &tenantID
+	campaign.Groups = []Group{{Name: group.Name}}
+}
+
 func (q *queryCounter) Print(values ...interface{}) {
 	if len(values) > 0 && values[0] == "sql" {
 		atomic.AddInt64(&q.count, 1)
@@ -22,7 +35,7 @@ func (q *queryCounter) Print(values ...interface{}) {
 func (s *ModelsSuite) TestCampaignTenantIDValidationAndPersistence(c *check.C) {
 	tenantID := "lQJ-D6j-wvw"
 	campaign := s.createCampaignDependencies(c)
-	campaign.TenantId = &tenantID
+	s.addTenantGroup(c, &campaign, tenantID)
 	c.Assert(PostCampaign(&campaign, campaign.UserId), check.Equals, nil)
 
 	got, err := GetCampaign(campaign.Id, campaign.UserId)
@@ -48,18 +61,19 @@ func (s *ModelsSuite) TestTenantFilteredCampaignsAndBatchResults(c *check.C) {
 	tenantA := "tenant-a"
 	tenantB := "tenant-b"
 	dependencies := s.createCampaignDependencies(c)
+	tenantACampaign := dependencies
+	s.addTenantGroup(c, &tenantACampaign, tenantA)
+	tenantBCampaign := dependencies
+	s.addTenantGroup(c, &tenantBCampaign, tenantB)
 
-	campaignA1 := dependencies
+	campaignA1 := tenantACampaign
 	campaignA1.Name = "Tenant A campaign 1"
-	campaignA1.TenantId = &tenantA
 	c.Assert(PostCampaign(&campaignA1, 1), check.Equals, nil)
-	campaignA2 := dependencies
+	campaignA2 := tenantACampaign
 	campaignA2.Name = "Tenant A campaign 2"
-	campaignA2.TenantId = &tenantA
 	c.Assert(PostCampaign(&campaignA2, 1), check.Equals, nil)
-	campaignB := dependencies
+	campaignB := tenantBCampaign
 	campaignB.Name = "Tenant B campaign"
-	campaignB.TenantId = &tenantB
 	c.Assert(PostCampaign(&campaignB, 1), check.Equals, nil)
 	legacy := dependencies
 	legacy.Name = "Legacy campaign"
@@ -108,10 +122,10 @@ func (s *ModelsSuite) TestTenantFilteredCampaignsAndBatchResults(c *check.C) {
 func (s *ModelsSuite) TestTenantBatchQueryCountIsBounded(c *check.C) {
 	tenantID := "query-count-tenant"
 	dependencies := s.createCampaignDependencies(c)
+	s.addTenantGroup(c, &dependencies, tenantID)
 	for i := 0; i < 10; i++ {
 		campaign := dependencies
 		campaign.Name = fmt.Sprintf("Tenant campaign %d", i)
-		campaign.TenantId = &tenantID
 		c.Assert(PostCampaign(&campaign, 1), check.Equals, nil)
 	}
 

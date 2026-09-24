@@ -11,12 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/gophish/gophish/config"
 	_ "github.com/lib/pq"
 )
 
 const (
 	defaultSQLiteDriver = "sqlite3"
+	mysqlDriver         = "mysql"
 	postgresDriver      = "postgres"
 )
 
@@ -26,6 +28,8 @@ func NewTestConfig(prefix string) (*config.Config, func() error, error) {
 		driver = defaultSQLiteDriver
 	}
 	switch driver {
+	case mysqlDriver:
+		return newMySQLConfig(prefix)
 	case postgresDriver:
 		return newPostgresConfig(prefix)
 	case defaultSQLiteDriver:
@@ -33,6 +37,46 @@ func NewTestConfig(prefix string) (*config.Config, func() error, error) {
 	default:
 		return nil, nil, fmt.Errorf("unsupported GOPHISH_TEST_DB %q", driver)
 	}
+}
+
+func newMySQLConfig(prefix string) (*config.Config, func() error, error) {
+	adminDSN := strings.TrimSpace(os.Getenv("GOPHISH_TEST_MYSQL_ADMIN_DSN"))
+	if adminDSN == "" {
+		return nil, nil, fmt.Errorf("GOPHISH_TEST_MYSQL_ADMIN_DSN must be set when GOPHISH_TEST_DB=mysql")
+	}
+
+	dbName := fmt.Sprintf("gophish_%s_%d_%d", sanitizeIdentifier(prefix), time.Now().UnixNano(), rand.Intn(100000))
+	adminDB, err := sql.Open(mysqlDriver, adminDSN)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer adminDB.Close()
+	if _, err := adminDB.Exec("CREATE DATABASE " + mysqlQuoteIdentifier(dbName)); err != nil {
+		return nil, nil, err
+	}
+
+	targetConfig, err := mysql.ParseDSN(adminDSN)
+	if err != nil {
+		_, _ = adminDB.Exec("DROP DATABASE IF EXISTS " + mysqlQuoteIdentifier(dbName))
+		return nil, nil, err
+	}
+	targetConfig.DBName = dbName
+	targetDSN := targetConfig.FormatDSN()
+	conf := &config.Config{
+		DBName:         mysqlDriver,
+		DBPath:         targetDSN,
+		MigrationsPath: migrationsPath(mysqlDriver),
+	}
+	cleanup := func() error {
+		cleanupDB, err := sql.Open(mysqlDriver, adminDSN)
+		if err != nil {
+			return err
+		}
+		defer cleanupDB.Close()
+		_, err = cleanupDB.Exec("DROP DATABASE IF EXISTS " + mysqlQuoteIdentifier(dbName))
+		return err
+	}
+	return conf, cleanup, nil
 }
 
 func newSQLiteConfig() (*config.Config, func() error, error) {
@@ -136,6 +180,10 @@ func withPostgresDBName(dsn string, dbName string) (string, error) {
 
 func pqQuoteIdentifier(v string) string {
 	return `"` + strings.ReplaceAll(v, `"`, `""`) + `"`
+}
+
+func mysqlQuoteIdentifier(v string) string {
+	return "`" + strings.ReplaceAll(v, "`", "``") + "`"
 }
 
 func sanitizeIdentifier(v string) string {

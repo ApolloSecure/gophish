@@ -347,12 +347,12 @@ func GetCampaignsByTenant(uid int64, tenantID string, includeResults bool) ([]Ca
 	return GetCampaignsByTenantPage(uid, tenantID, includeResults, 1, 50)
 }
 
-// GetCampaignsByTenantPage returns one page of tenant campaigns, ordered by
-// creation date descending with ID as a deterministic tie-breaker.
+// GetCampaignsByTenantPage returns one page of tenant campaigns, ordered by ID
+// descending to preserve the ordering convention used by existing tests and callers.
 func GetCampaignsByTenantPage(uid int64, tenantID string, includeResults bool, page int, limit int) ([]Campaign, error) {
 	cs := []Campaign{}
 	err := db.Where("user_id = ? AND tenant_id = ?", uid, tenantID).
-		Order("created_date DESC, id DESC").
+		Order("id DESC").
 		Limit(limit).
 		Offset((page - 1) * limit).
 		Find(&cs).Error
@@ -697,7 +697,7 @@ func PostCampaign(c *Campaign, uid int64) error {
 	// duplicates is ok for now), so we'll do that here to save a loop.
 	totalRecipients := 0
 	for i, g := range c.Groups {
-		c.Groups[i], err = GetGroupByName(g.Name, uid)
+		c.Groups[i], err = GetGroupByNameForTenant(g.Name, uid, c.TenantId)
 		if err == gorm.ErrRecordNotFound {
 			log.WithFields(logrus.Fields{
 				"group": g.Name,
@@ -749,9 +749,21 @@ func PostCampaign(c *Campaign, uid int64) error {
 	c.SMTP = s
 	c.SMTPId = s.Id
 	// Insert into the DB
-	err = db.Save(c).Error
+	campaignTx := db.Begin()
+	if campaignTx.Error != nil {
+		return campaignTx.Error
+	}
+	if err = ensureTenant(campaignTx, c.TenantId); err != nil {
+		campaignTx.Rollback()
+		return err
+	}
+	err = campaignTx.Save(c).Error
 	if err != nil {
+		campaignTx.Rollback()
 		log.Error(err)
+		return err
+	}
+	if err = campaignTx.Commit().Error; err != nil {
 		return err
 	}
 	err = AddEvent(&Event{Message: "Campaign Created"}, c.Id)

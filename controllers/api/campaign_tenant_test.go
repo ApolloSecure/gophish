@@ -32,9 +32,26 @@ func campaignRequest(method, target string, body []byte) *http.Request {
 	return ctx.Set(req, "user_id", int64(1))
 }
 
+func createTenantTestGroup(t *testing.T, tenantID string) {
+	group := models.Group{
+		Name:     "Test Group",
+		UserId:   1,
+		TenantId: &tenantID,
+		Targets: []models.Target{
+			{BaseRecipient: models.BaseRecipient{Email: "test1@example.com", FirstName: "First", LastName: "Example"}},
+			{BaseRecipient: models.BaseRecipient{Email: "test2@example.com", FirstName: "Second", LastName: "Example"}},
+		},
+	}
+	if err := models.PostGroup(&group); err != nil {
+		t.Fatalf("create tenant group %q: %v", tenantID, err)
+	}
+}
+
 func TestTenantCampaignCreateListAndBatchResults(t *testing.T) {
 	testContext := setupTest(t)
 	createTestData(t)
+	createTenantTestGroup(t, "tenant-a")
+	createTenantTestGroup(t, "tenant-b")
 
 	created := make(map[string]models.Campaign)
 	for _, tenantID := range []string{"tenant-a", "tenant-b"} {
@@ -123,6 +140,7 @@ func TestTenantCampaignQueryValidation(t *testing.T) {
 func TestTenantCampaignPaginationAndOrdering(t *testing.T) {
 	testContext := setupTest(t)
 	createTestData(t)
+	createTenantTestGroup(t, "paged-tenant")
 	createdIDs := make([]int64, 0, 3)
 	for i := 0; i < 3; i++ {
 		recorder := httptest.NewRecorder()

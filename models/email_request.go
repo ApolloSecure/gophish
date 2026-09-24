@@ -19,6 +19,7 @@ const PreviewPrefix = "preview-"
 // This type implements the mailer.Mail interface.
 type EmailRequest struct {
 	Id           int64        `json:"-"`
+	TenantId     *string      `json:"tenant_id" gorm:"column:tenant_id;type:varchar(255)"`
 	Template     Template     `json:"template"`
 	TemplateId   int64        `json:"-"`
 	Page         Page         `json:"page"`
@@ -46,6 +47,9 @@ func (s *EmailRequest) getFromAddress() string {
 // Validate ensures the SendTestEmailRequest structure
 // is valid.
 func (s *EmailRequest) Validate() error {
+	if err := ValidateTenantID(s.TenantId); err != nil {
+		return err
+	}
 	switch {
 	case s.Email == "":
 		return ErrEmailNotSpecified
@@ -92,7 +96,19 @@ func PostEmailRequest(s *EmailRequest) error {
 		return err
 	}
 	s.RId = fmt.Sprintf("%s%s", PreviewPrefix, rid)
-	return db.Save(&s).Error
+	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if err := ensureTenant(tx, s.TenantId); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Save(s).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit().Error
 }
 
 // GetEmailRequestByResultId retrieves the EmailRequest by the underlying rid

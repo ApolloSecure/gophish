@@ -197,9 +197,10 @@ func (s *ModelsSuite) TestMailLogSuccess(ch *check.C) {
 
 func (s *ModelsSuite) TestGenerateMailLog(ch *check.C) {
 	campaign := Campaign{
-		Id:     1,
 		UserId: 1,
+		Name:   "Mail log parent",
 	}
+	ch.Assert(db.Save(&campaign).Error, check.Equals, nil)
 	result := Result{
 		RId: "abc1234",
 	}
